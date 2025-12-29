@@ -143,6 +143,9 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[WEBHOOK] Message from ${chatId}: ${messageText}`);
+        if (body.message) {
+            console.log(`[WEBHOOK] Message keys: ${Object.keys(body.message).join(", ")}`);
+        }
 
         // Check for bot commands first
         const { isCommand, handleCommand } = await import("@/lib/commands");
