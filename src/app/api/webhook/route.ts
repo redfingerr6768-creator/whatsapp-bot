@@ -135,17 +135,22 @@ export async function POST(req: NextRequest) {
             const payload = body.payload;
             messageText = payload.body || "";
             chatId = payload.chat_id || payload.from || "";
-        } else if (body.message && body.message.text) {
-            // Real GOWA format
-            messageText = body.message.text || "";
+        } else if (body.from && body.chat_id) {
+            // Real GOWA format - check for media with caption first
             chatId = body.from || body.chat_id || "";
             deviceId = "real";
             isTestMode = false;
-        } else if (body.chat_id && body.from) {
-            // Might be another format, try to extract
-            messageText = body.message?.text || body.body || "";
-            chatId = body.from || body.chat_id || "";
-            deviceId = "real";
+
+            // Priority: image caption > video caption > message text
+            if (body.image && body.image.caption) {
+                messageText = body.image.caption;
+            } else if (body.video && body.video.caption) {
+                messageText = body.video.caption;
+            } else if (body.document && body.document.caption) {
+                messageText = body.document.caption;
+            } else {
+                messageText = body.message?.text || "";
+            }
         } else {
             // Unknown format, log and ignore
             logToFile(`UNKNOWN FORMAT - ignored`);
@@ -156,7 +161,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: "no chatId" });
         }
 
-        if (!messageText) {
+        // Allow processing if there's messageText OR if there's media (for sticker command reply)
+        if (!messageText && !body.image && !body.video) {
             return NextResponse.json({ status: "no message text" });
         }
 
@@ -191,21 +197,25 @@ export async function POST(req: NextRequest) {
                 hasMedia = mediaInfo.hasMedia;
             }
 
-            // New format (body.message)
-            if (body.message) {
-                if (body.message.image) {
-                    mediaUrl = typeof body.message.image === "string" ? body.message.image : body.message.image.url;
-                    mimetype = "image/jpeg";
-                    hasMedia = true;
-                } else if (body.message.video) {
-                    mediaUrl = typeof body.message.video === "string" ? body.message.video : body.message.video.url;
-                    mimetype = "video/mp4";
-                    hasMedia = true;
-                } else if (body.message.document) {
-                    mediaUrl = typeof body.message.document === "string" ? body.message.document : body.message.document.url;
-                    mimetype = "application/octet-stream";
-                    hasMedia = true;
-                }
+            // Real GOWA format - media at top level with media_path
+            // Image/Video/Document are at body level, not inside body.message
+            const GOWA_BASE = process.env.GOWA_URL || "http://localhost:3030";
+
+            if (body.image && body.image.media_path) {
+                mediaUrl = `${GOWA_BASE}/${body.image.media_path}`;
+                mimetype = body.image.mime_type || "image/jpeg";
+                hasMedia = true;
+                console.log(`[WEBHOOK] Found image: ${mediaUrl}`);
+            } else if (body.video && body.video.media_path) {
+                mediaUrl = `${GOWA_BASE}/${body.video.media_path}`;
+                mimetype = body.video.mime_type || "video/mp4";
+                hasMedia = true;
+                console.log(`[WEBHOOK] Found video: ${mediaUrl}`);
+            } else if (body.document && body.document.media_path) {
+                mediaUrl = `${GOWA_BASE}/${body.document.media_path}`;
+                mimetype = body.document.mime_type || "application/octet-stream";
+                hasMedia = true;
+                console.log(`[WEBHOOK] Found document: ${mediaUrl}`);
             }
 
             // Build message payload with media
