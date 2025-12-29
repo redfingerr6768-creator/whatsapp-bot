@@ -554,10 +554,17 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
     }
 }
 
-import { getVideoInfo } from "./ytdlp";
+import { downloadVideo, cleanupOldVideos } from "./ytdlp";
+
+// Get the host URL for local file serving
+function getLocalFileUrl(relativePath: string): string {
+    // Use localhost:3000 where Next.js serves static files
+    return `http://localhost:3000${relativePath}`;
+}
 
 /**
  * Handle video download from social media using yt-dlp
+ * Downloads file locally then sends via localhost URL
  */
 async function handleDownloadCommand(client: GowaClient, chatId: string, url: string, command: string): Promise<CommandResult> {
     try {
@@ -572,13 +579,19 @@ async function handleDownloadCommand(client: GowaClient, chatId: string, url: st
             return { handled: true, error: "invalid url" };
         }
 
-        await client.sendText(chatId, "⏳ Mendownload video...");
+        await client.sendText(chatId, "⏳ Mendownload video, mohon tunggu...");
 
-        // Use yt-dlp
-        const videoInfo = await getVideoInfo(url);
+        // Download video locally using yt-dlp
+        const result = await downloadVideo(url);
 
-        // Send the video
-        await client.sendVideo(chatId, videoInfo.url, `📹 ${videoInfo.platform} Video\n${videoInfo.title || ""}`);
+        // Clean up old videos occasionally
+        cleanupOldVideos();
+
+        // Get localhost URL for GOWA to fetch
+        const localUrl = getLocalFileUrl(result.localUrl);
+
+        // Send the video from local server
+        await client.sendVideo(chatId, localUrl, `📹 ${result.platform}\n${result.title || ""}`);
         return { handled: true, response: "video sent" };
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";

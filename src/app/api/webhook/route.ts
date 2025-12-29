@@ -21,6 +21,24 @@ function logToFile(message: string) {
     }
 }
 
+// Message deduplication - prevent processing same message multiple times
+const processedMessages = new Set<string>();
+const MAX_CACHE_SIZE = 1000;
+
+function isMessageProcessed(messageId: string): boolean {
+    if (processedMessages.has(messageId)) {
+        return true;
+    }
+    // Add to cache
+    processedMessages.add(messageId);
+    // Limit cache size
+    if (processedMessages.size > MAX_CACHE_SIZE) {
+        const firstItem = processedMessages.values().next().value;
+        if (firstItem) processedMessages.delete(firstItem);
+    }
+    return false;
+}
+
 /**
  * Webhook endpoint to receive incoming messages from GOWA
  * Configure GOWA to send webhooks to: http://your-server:3001/api/webhook
@@ -145,6 +163,13 @@ export async function POST(req: NextRequest) {
         console.log(`[WEBHOOK] Message from ${chatId}: ${messageText}`);
         if (body.message) {
             console.log(`[WEBHOOK] Message keys: ${Object.keys(body.message).join(", ")}`);
+        }
+
+        // Deduplicate messages - prevent processing same message multiple times
+        const messageId = body.message?.id || body.payload?.id || `${chatId}-${Date.now()}`;
+        if (isMessageProcessed(messageId)) {
+            console.log(`[WEBHOOK] Duplicate message ${messageId} - skipping`);
+            return NextResponse.json({ status: "duplicate", messageId });
         }
 
         // Check for bot commands first
