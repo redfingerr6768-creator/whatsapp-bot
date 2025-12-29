@@ -42,13 +42,5 @@ next-env.d.ts
 
 /src/generated/prisma
 
-# Data files (contain sensitive config)
-data/*.json
-
-# GOWA/WAHA sessions (sensitive)
-gowa-server/sessions/
-waha-server/sessions/
-
-# Uploads (user content)
-public/uploads/*
-!public/uploads/.gitkeep
+# Keep node_modules and .next excluded (large files)
+# Everything else will be uploaded for backup

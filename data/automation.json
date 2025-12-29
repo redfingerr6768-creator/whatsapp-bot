@@ -1,0 +1,41 @@
+[
+  {
+    "id": "1",
+    "name": "Welcome Message",
+    "keywords": [
+      "hi",
+      "hello",
+      "halo",
+      "hai"
+    ],
+    "matchType": "exact",
+    "reply": "Hi! Welcome to our service. How can I help you today?",
+    "enabled": true,
+    "createdAt": 1766998736614
+  },
+  {
+    "id": "2",
+    "name": "Price Info",
+    "keywords": [
+      "price",
+      "harga",
+      "cost",
+      "berapa"
+    ],
+    "matchType": "contains",
+    "reply": "Thank you for your interest! Please check our catalog at example.com/catalog or contact our sales team.",
+    "enabled": true,
+    "createdAt": 1766998736614
+  },
+  {
+    "name": "Persistence Test",
+    "keywords": [
+      "persistent"
+    ],
+    "matchType": "contains",
+    "reply": "I survived restart!",
+    "enabled": true,
+    "id": "1766998827418",
+    "createdAt": 1766998827418
+  }
+]
