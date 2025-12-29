@@ -9,6 +9,7 @@ import { getGroupTemplates } from "./groupTemplates";
 // Pre-import for speed (avoid dynamic import delay)
 import { createSticker, cleanupOldStickers } from "./sticker";
 import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
+import { getRandomDelay, setDelay, getBroadcastConfig } from "./broadcastConfig";
 
 const GOWA_URL = process.env.GOWA_URL || "http://localhost:3030";
 const GOWA_BASIC_AUTH = process.env.GOWA_BASIC_AUTH;
@@ -51,6 +52,7 @@ const COMMANDS = {
     ADMIN_SENDGROUP: ["/sendgroup", "/sg"],
     ADMIN_AI_TOGGLE: ["/aitoggle", "/aiswitch"],
     ADMIN_PING: ["/ping"],
+    ADMIN_SETDELAY: ["/setdelay", "/delay"],
     // AI Query (available to everyone)
     AI_QUERY: ["/ai"],
 };
@@ -244,6 +246,36 @@ _Contoh: /ai apa itu blockchain?_
             return { handled: false };
         }
         return await handleAdminBroadcast(client, chatId, args, payload);
+    }
+
+    // Admin: Set broadcast delay
+    if (COMMANDS.ADMIN_SETDELAY.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const config = getBroadcastConfig();
+
+        if (!args) {
+            // Show current delay
+            const minSec = (config.minDelay / 1000).toFixed(1);
+            const maxSec = (config.maxDelay / 1000).toFixed(1);
+            await client.sendText(chatId, `⏱️ *Delay Broadcast*\n\nMin: ${minSec}s\nMax: ${maxSec}s\n\nUntuk mengubah:\n/setdelay <min> [max]\n\nContoh:\n/setdelay 1 → 1-4 detik\n/setdelay 2 5 → 2-5 detik\n/setdelay 0.5 1 → 0.5-1 detik`);
+            return { handled: true, response: "delay shown" };
+        }
+
+        const parts = args.split(/\s+/);
+        const minSec = parseFloat(parts[0]);
+        const maxSec = parts[1] ? parseFloat(parts[1]) : undefined;
+
+        if (isNaN(minSec) || minSec < 0) {
+            await client.sendText(chatId, "❌ Format salah. Contoh: /setdelay 2 5");
+            return { handled: true, error: "invalid format" };
+        }
+
+        const newConfig = setDelay(minSec, maxSec, payload.from);
+        const newMinSec = (newConfig.minDelay / 1000).toFixed(1);
+        const newMaxSec = (newConfig.maxDelay / 1000).toFixed(1);
+        await client.sendText(chatId, `✅ Delay broadcast diubah!\n\nMin: ${newMinSec}s\nMax: ${newMaxSec}s`);
+        return { handled: true, response: "delay updated" };
     }
 
     // Admin: List groups command
@@ -474,8 +506,8 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
                 failCount++;
             }
 
-            // Random delay 2-5 seconds (anti-ban)
-            const delay = Math.floor(Math.random() * 3000) + 2000;
+            // Delay from config (anti-ban)
+            const delay = getRandomDelay();
             await new Promise(r => setTimeout(r, delay));
         }
 
