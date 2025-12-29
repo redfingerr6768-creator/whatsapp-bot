@@ -740,12 +740,22 @@ async function handleTagAll(client: GowaClient, chatId: string, args: string, pa
         const mentions = group.participants.map(p => p.jid);
 
         // 5. Send message with mentions
-        // If args is empty, use a zero-width space or "." to make it "hidetag"
-        const text = args ? args : " "; // Simple space for hidetag if no text
+        // Logic: Since GOWA API (REST) doesn't support 'mentions' field, we must use visible tags.
+        // We append the mentions to the text.
+        const baseText = args ? args : "📢 *TAG ALL*";
 
-        await client.sendText(chatId, text, mentions);
+        // Construct mention string: @628xxx @628yyy...
+        const mentionText = group.participants
+            .map(p => `@${p.jid.split("@")[0]}`)
+            .join(" ");
 
-        return { handled: true, response: `tagged ${mentions.length} members` };
+        // Combine (limit length if needed, but for now just send)
+        // Note: This will be a visible tag. Hidetag is not supported by current API.
+        const text = `${baseText}\n\n${mentionText}`;
+
+        await client.sendText(chatId, text);
+
+        return { handled: true, response: `tagged ${group.participants.length} members` };
     } catch (error: any) {
         await client.sendText(chatId, `❌ *Gagal Tag All*\nError: ${error.message}`);
         return { handled: true, error: error.message };

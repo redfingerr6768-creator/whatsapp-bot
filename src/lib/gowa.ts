@@ -246,10 +246,11 @@ export class GowaClient {
 
     // ==================== MESSAGING ====================
     async sendText(phone: string, message: string, mentions?: string[]): Promise<GowaResponse> {
+        // NOTE: GOWA API does not seem to support 'mentions' field in FormData (returns 405).
+        // Mentions must be embedded in the message text (e.g. @628xxx).
         const formData = this.createFormData({
             phone,
             message,
-            ...(mentions && mentions.length > 0 ? { mentions: mentions.join(",") } : {}),
         });
 
         return this.request(
