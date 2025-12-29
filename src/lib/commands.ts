@@ -466,6 +466,12 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         const uniqueGroupIds = [...new Set(template.groupIds)];
         const totalGroups = uniqueGroupIds.length;
 
+        // Check if template has groups
+        if (totalGroups === 0) {
+            await client.sendText(adminChatId, `❌ Template "${template.name}" tidak memiliki grup!\n\nTambahkan grup di Dashboard → Groups → pilih grup → Save as Template`);
+            return { handled: true, error: "template has no groups" };
+        }
+
         // Set broadcast state
         broadcastInProgress = true;
         cancelBroadcast = false;
