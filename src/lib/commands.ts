@@ -531,7 +531,7 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
 }
 
 /**
- * Handle video sticker creation
+ * Handle video sticker creation - FAST VERSION
  */
 async function handleVideoStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
     try {
@@ -539,22 +539,22 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
         const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
 
         if (!mediaUrl) {
-            await client.sendText(chatId, "❌ Kirim video dengan caption /vsticker atau reply ke video dengan /vsticker");
+            await client.sendText(chatId, "❌ Kirim video dengan /vsticker");
             return { handled: true, error: "no media" };
         }
 
         if (!mimetype.startsWith("video/")) {
-            await client.sendText(chatId, "❌ File harus berupa video (MP4, max 10 detik)");
+            await client.sendText(chatId, "❌ File harus video (MP4, max 6 detik)");
             return { handled: true, error: "not a video" };
         }
 
-        await client.sendText(chatId, "⏳ Membuat video sticker...");
+        // Try to send video as sticker via /send/sticker
         await client.sendVideoAsSticker(chatId, mediaUrl);
         return { handled: true, response: "video sticker sent" };
     } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        await client.sendText(chatId, `❌ Gagal membuat video sticker: ${errorMessage}`);
-        return { handled: true, error: errorMessage };
+        const msg = error instanceof Error ? error.message : "Error";
+        await client.sendText(chatId, `❌ Video sticker gagal: ${msg}\n\n💡 Tip: WhatsApp hanya support video sticker max 6 detik`);
+        return { handled: true, error: msg };
     }
 }
 

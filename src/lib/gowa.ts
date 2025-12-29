@@ -341,16 +341,14 @@ export class GowaClient {
     }
 
     async sendVideoAsSticker(phone: string, videoUrl: string): Promise<GowaResponse> {
-        // GOWA supports animated stickers from video via /send/video with sticker param
-        // Note: Video stickers in GOWA work differently - may need to check API support
+        // Use /send/sticker endpoint - GOWA may convert video/GIF to animated sticker
         const formData = this.createFormData({
             phone,
-            video_url: videoUrl,
-            sticker: "true",
+            sticker_url: videoUrl,
         });
 
         return this.request(
-            "/send/video",
+            "/send/sticker",
             { method: "POST", body: formData },
             true
         ) as Promise<GowaResponse>;
