@@ -496,9 +496,13 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
 }
 /**
  * Handle sticker creation from image
- * GOWA /send/sticker endpoint auto-converts to WebP 512x512
+ * Downloads image, converts to WebP, then sends via /send/sticker
+ * (GOWA doesn't support all formats like .jfif, so we convert first)
  */
 async function handleStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
+    // Import sticker utility for WebP conversion
+    const { createSticker, cleanupOldStickers } = await import("./sticker");
+
     try {
         // Check if message has media or is replying to media
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
@@ -516,10 +520,20 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
 
         await client.sendText(chatId, "⏳ Membuat sticker...");
 
-        console.log(`[STICKER] Sending to GOWA: ${mediaUrl}`);
+        console.log(`[STICKER] Converting image: ${mediaUrl}`);
 
-        // GOWA /send/sticker auto-converts image to WebP 512x512 sticker
-        await client.sendImageAsSticker(chatId, mediaUrl);
+        // Convert to WebP locally (handles all formats including .jfif)
+        const sticker = await createSticker(mediaUrl);
+
+        // Clean up old stickers occasionally  
+        cleanupOldStickers();
+
+        // Serve WebP from localhost
+        const stickerUrl = `http://localhost:3000${sticker.localUrl}`;
+        console.log(`[STICKER] Sending WebP: ${stickerUrl}`);
+
+        // Send the converted WebP sticker
+        await client.sendImageAsSticker(chatId, stickerUrl);
         return { handled: true, response: "sticker sent" };
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
