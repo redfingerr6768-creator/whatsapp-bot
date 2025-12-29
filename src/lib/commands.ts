@@ -495,51 +495,38 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
     }
 }
 /**
- * Handle sticker creation from image
- * Downloads image, converts to WebP, then sends via /send/sticker
- * (GOWA doesn't support all formats like .jfif, so we convert first)
+ * Handle sticker creation from image - FAST VERSION
+ * Downloads → Converts to WebP 512x512 → Sends sticker
  */
 async function handleStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
-    // Import sticker utility for WebP conversion
     const { createSticker, cleanupOldStickers } = await import("./sticker");
 
     try {
-        // Check if message has media or is replying to media
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
         const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
 
         if (!mediaUrl) {
-            await client.sendText(chatId, "❌ Kirim gambar dengan caption /sticker atau reply ke gambar dengan /sticker");
+            await client.sendText(chatId, "❌ Kirim gambar dengan /sticker");
             return { handled: true, error: "no media" };
         }
 
         if (!mimetype.startsWith("image/")) {
-            await client.sendText(chatId, "❌ File harus berupa gambar (PNG, JPG, WEBP)");
+            await client.sendText(chatId, "❌ File harus gambar");
             return { handled: true, error: "not an image" };
         }
 
-        await client.sendText(chatId, "⏳ Membuat sticker...");
-
-        console.log(`[STICKER] Converting image: ${mediaUrl}`);
-
-        // Convert to WebP locally (handles all formats including .jfif)
+        // Convert & send - no progress message for speed
         const sticker = await createSticker(mediaUrl);
+        cleanupOldStickers(); // Async, non-blocking
 
-        // Clean up old stickers occasionally  
-        cleanupOldStickers();
-
-        // Serve WebP from localhost
         const stickerUrl = `http://localhost:3000${sticker.localUrl}`;
-        console.log(`[STICKER] Sending WebP: ${stickerUrl}`);
-
-        // Send the converted WebP sticker
         await client.sendImageAsSticker(chatId, stickerUrl);
+
         return { handled: true, response: "sticker sent" };
     } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error("[STICKER] Error:", errorMessage);
-        await client.sendText(chatId, `❌ Gagal membuat sticker: ${errorMessage}`);
-        return { handled: true, error: errorMessage };
+        const msg = error instanceof Error ? error.message : "Error";
+        await client.sendText(chatId, `❌ Gagal: ${msg}`);
+        return { handled: true, error: msg };
     }
 }
 

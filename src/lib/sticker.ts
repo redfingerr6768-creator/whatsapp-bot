@@ -6,10 +6,12 @@ import { randomUUID } from "crypto";
 // Directory for converted stickers
 const STICKERS_DIR = path.join(process.cwd(), "public", "uploads", "stickers");
 
-// Ensure stickers directory exists
-if (!fs.existsSync(STICKERS_DIR)) {
-    fs.mkdirSync(STICKERS_DIR, { recursive: true });
-}
+// Ensure stickers directory exists (do once at startup)
+try {
+    if (!fs.existsSync(STICKERS_DIR)) {
+        fs.mkdirSync(STICKERS_DIR, { recursive: true });
+    }
+} catch { }
 
 export interface StickerResult {
     localPath: string;
@@ -18,8 +20,8 @@ export interface StickerResult {
 }
 
 /**
- * Download image and convert to WebP sticker format
- * WhatsApp stickers: 512x512 WebP, max 100KB for static, 500KB for animated
+ * FAST sticker creation - optimized for speed
+ * Converts image to WebP 512x512 sticker format
  */
 export async function createSticker(imageUrl: string): Promise<StickerResult> {
     const stickerId = randomUUID().substring(0, 8);
@@ -27,31 +29,35 @@ export async function createSticker(imageUrl: string): Promise<StickerResult> {
     const outputPath = path.join(STICKERS_DIR, filename);
 
     try {
-        console.log(`[STICKER] Downloading image from: ${imageUrl}`);
+        // Fetch the image with timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-        // Fetch the image
-        const response = await fetch(imageUrl);
+        const response = await fetch(imageUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+
         if (!response.ok) {
-            throw new Error(`Failed to fetch image: ${response.status}`);
+            throw new Error(`HTTP ${response.status}`);
         }
 
         const imageBuffer = Buffer.from(await response.arrayBuffer());
-        console.log(`[STICKER] Downloaded ${imageBuffer.length} bytes`);
 
-        // Convert to WebP sticker format
-        // WhatsApp sticker specs: 512x512, WebP format
-        await sharp(imageBuffer)
+        // FAST conversion settings
+        await sharp(imageBuffer, {
+            failOnError: false,  // Don't fail on minor issues
+            limitInputPixels: false  // No limit
+        })
             .resize(512, 512, {
                 fit: "contain",
-                background: { r: 0, g: 0, b: 0, alpha: 0 }  // Transparent background
+                background: { r: 0, g: 0, b: 0, alpha: 0 },
+                fastShrinkOnLoad: true  // Faster resize
             })
             .webp({
-                quality: 80,
+                quality: 60,      // Lower quality = faster + smaller
+                effort: 0,        // Fastest compression
                 lossless: false
             })
             .toFile(outputPath);
-
-        console.log(`[STICKER] Created sticker at: ${outputPath}`);
 
         return {
             localPath: outputPath,
@@ -59,31 +65,31 @@ export async function createSticker(imageUrl: string): Promise<StickerResult> {
             filename
         };
     } catch (error: any) {
-        console.error("[STICKER] Conversion error:", error.message);
         // Clean up on error
-        if (fs.existsSync(outputPath)) {
-            fs.unlinkSync(outputPath);
-        }
-        throw new Error(`Gagal membuat sticker: ${error.message}`);
+        try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch { }
+        throw new Error(error.message || "Konversi gagal");
     }
 }
 
 /**
- * Clean up old sticker files (older than 1 hour)
+ * Async cleanup - don't block main thread
  */
 export function cleanupOldStickers() {
-    try {
-        const files = fs.readdirSync(STICKERS_DIR);
-        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    // Run cleanup in background, don't await
+    setImmediate(() => {
+        try {
+            const files = fs.readdirSync(STICKERS_DIR);
+            const thirtyMinAgo = Date.now() - 30 * 60 * 1000; // 30 min
 
-        files.forEach(file => {
-            const filePath = path.join(STICKERS_DIR, file);
-            const stats = fs.statSync(filePath);
-            if (stats.mtimeMs < oneHourAgo) {
-                fs.unlinkSync(filePath);
+            for (const file of files) {
+                try {
+                    const filePath = path.join(STICKERS_DIR, file);
+                    const stats = fs.statSync(filePath);
+                    if (stats.mtimeMs < thirtyMinAgo) {
+                        fs.unlinkSync(filePath);
+                    }
+                } catch { }
             }
-        });
-    } catch (error) {
-        // Ignore cleanup errors
-    }
+        } catch { }
+    });
 }
