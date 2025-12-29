@@ -59,14 +59,13 @@ export class GowaClient {
 
         let response: Response | undefined;
         let lastError: any;
-        const maxRetries = 3;
-        const baseDelay = 1000;
+        const maxRetries = 2;      // Reduced from 3
+        const baseDelay = 200;     // Reduced from 1000ms
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 if (attempt > 0) {
                     const delay = baseDelay * Math.pow(2, attempt - 1);
-                    console.log(`[GOWA] Retry attempt ${attempt}/${maxRetries} for ${endpoint} after ${delay}ms`);
                     await new Promise((resolve) => setTimeout(resolve, delay));
                 }
 
@@ -78,9 +77,7 @@ export class GowaClient {
                 break;
             } catch (error) {
                 lastError = error;
-                if (attempt === maxRetries) {
-                    console.error(`[GOWA] Failed after ${maxRetries} retries: ${endpoint}`, error);
-                }
+                // Silent retry - no logging for speed
             }
         }
 

@@ -108,9 +108,8 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        // Log incoming webhook for debugging (file + console)
-        logToFile(`WEBHOOK RECEIVED: ${JSON.stringify(body)}`);
-        console.log("[WEBHOOK] Received:", JSON.stringify(body, null, 2));
+        // File logging only for debugging (console removed for speed)
+        logToFile(`WEBHOOK: ${JSON.stringify(body)}`);
 
         // GOWA has two payload formats:
         // 1. Test/Old format: {event: "message", device_id: "...", payload: {from, body, ...}}

@@ -6,6 +6,9 @@
 import { GowaClient, getGowaClient } from "./gowa";
 import { isAdmin } from "./adminConfig";
 import { getGroupTemplates } from "./groupTemplates";
+// Pre-import for speed (avoid dynamic import delay)
+import { createSticker, cleanupOldStickers } from "./sticker";
+import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
 
 const GOWA_URL = process.env.GOWA_URL || "http://localhost:3030";
 const GOWA_BASIC_AUTH = process.env.GOWA_BASIC_AUTH;
@@ -499,7 +502,6 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
  * Downloads → Converts to WebP 512x512 → Sends sticker
  */
 async function handleStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
-    const { createSticker, cleanupOldStickers } = await import("./sticker");
 
     try {
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
@@ -535,7 +537,6 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
  * Downloads video → Converts to GIF 512x512 → Sends as sticker
  */
 async function handleVideoStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
-    const { createVideoSticker, cleanupOldVideoStickers } = await import("./vsticker");
 
     try {
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
