@@ -554,8 +554,10 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
     }
 }
 
+import { getVideoInfo } from "./ytdlp";
+
 /**
- * Handle video download from social media
+ * Handle video download from social media using yt-dlp
  */
 async function handleDownloadCommand(client: GowaClient, chatId: string, url: string, command: string): Promise<CommandResult> {
     try {
@@ -570,106 +572,18 @@ async function handleDownloadCommand(client: GowaClient, chatId: string, url: st
             return { handled: true, error: "invalid url" };
         }
 
-        await client.sendText(chatId, "⏳ Mendownload video, mohon tunggu...");
+        await client.sendText(chatId, "⏳ Mendownload video...");
 
-        // Detect platform
-        const platform = detectPlatform(url);
-
-        // Use external API for downloading
-        const videoInfo = await downloadVideo(url, platform);
-
-        if (videoInfo.error) {
-            await client.sendText(chatId, `❌ Gagal download: ${videoInfo.error}`);
-            return { handled: true, error: videoInfo.error };
-        }
+        // Use yt-dlp
+        const videoInfo = await getVideoInfo(url);
 
         // Send the video
-        await client.sendVideo(chatId, videoInfo.url, `📹 ${platform} Video\n${videoInfo.title || ""}`);
+        await client.sendVideo(chatId, videoInfo.url, `📹 ${videoInfo.platform} Video\n${videoInfo.title || ""}`);
         return { handled: true, response: "video sent" };
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error("Download error:", errorMessage);
         await client.sendText(chatId, `❌ Gagal download: ${errorMessage}`);
         return { handled: true, error: errorMessage };
-    }
-}
-
-/**
- * Detect platform from URL
- */
-function detectPlatform(url: string): string {
-    const lowerUrl = url.toLowerCase();
-    if (lowerUrl.includes("tiktok.com") || lowerUrl.includes("vm.tiktok")) return "TikTok";
-    if (lowerUrl.includes("instagram.com")) return "Instagram";
-    if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be")) return "YouTube";
-    if (lowerUrl.includes("twitter.com") || lowerUrl.includes("x.com")) return "Twitter";
-    if (lowerUrl.includes("facebook.com") || lowerUrl.includes("fb.watch")) return "Facebook";
-    return "Unknown";
-}
-
-/**
- * Download video using external API
- */
-async function downloadVideo(url: string, platform: string): Promise<{ url: string; title?: string; error?: string }> {
-    try {
-        // Use cobalt API v2 format
-        const apiUrl = `https://api.cobalt.tools/`;
-
-        const response = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                url: url,
-                videoQuality: "720",
-                filenameStyle: "basic",
-            })
-        });
-
-        if (!response.ok) {
-            // Try alternative API
-            return await downloadVideoFallback(url, platform);
-        }
-
-        const data = await response.json();
-
-        if (data.status === "error") {
-            return { url: "", error: data.error?.code || "Download failed" };
-        }
-
-        // New format returns url directly
-        if (data.url) {
-            return { url: data.url, title: data.filename || "" };
-        }
-
-        if (data.status === "picker" && data.picker && data.picker.length > 0) {
-            return { url: data.picker[0].url, title: "" };
-        }
-
-        return await downloadVideoFallback(url, platform);
-    } catch (error: unknown) {
-        console.error("Download error:", error);
-        return await downloadVideoFallback(url, platform);
-    }
-}
-
-/**
- * Fallback download using alternative API
- */
-async function downloadVideoFallback(url: string, platform: string): Promise<{ url: string; title?: string; error?: string }> {
-    try {
-        // Try alternative free API
-        const encoded = encodeURIComponent(url);
-        const apiUrl = `https://api.vevioz.com/api/button/mp4/${encoded}`;
-
-        // This is a simple fallback - may not work for all platforms
-        // Return error suggesting user try another method
-        return {
-            url: "",
-            error: `Platform ${platform} tidak didukung saat ini. Coba download langsung dari aplikasi.`
-        };
-    } catch (error) {
-        return { url: "", error: "Download service unavailable" };
     }
 }
