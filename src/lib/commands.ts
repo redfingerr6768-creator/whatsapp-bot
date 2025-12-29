@@ -496,6 +496,7 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
             try {
                 if (hasMedia) {
                     // Send media with caption
+                    console.log(`[BROADCAST] Sending media to ${groupId}: ${mediaUrl?.substring(0, 50)}...`);
                     if (mimetype.startsWith("image/")) {
                         await client.sendImage(groupId, mediaUrl!, message);
                     } else if (mimetype.startsWith("video/")) {
@@ -508,7 +509,8 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
                     await client.sendText(groupId, message);
                 }
                 successCount++;
-            } catch (e) {
+            } catch (e: any) {
+                console.log(`[BROADCAST] Failed for ${groupId}: ${e.message}`);
                 failCount++;
             }
 
