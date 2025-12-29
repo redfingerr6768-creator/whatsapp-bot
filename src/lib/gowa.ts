@@ -327,7 +327,17 @@ export class GowaClient {
 
     // ==================== STICKERS ====================
     async sendImageAsSticker(phone: string, imageUrl: string): Promise<GowaResponse> {
-        return this.sendImage(phone, imageUrl, undefined, true);
+        // Use dedicated /send/sticker endpoint - GOWA auto-converts to WebP 512x512
+        const formData = this.createFormData({
+            phone,
+            image_url: imageUrl,
+        });
+
+        return this.request(
+            "/send/sticker",
+            { method: "POST", body: formData },
+            true
+        ) as Promise<GowaResponse>;
     }
 
     async sendVideoAsSticker(phone: string, videoUrl: string): Promise<GowaResponse> {
