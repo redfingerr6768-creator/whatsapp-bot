@@ -497,8 +497,12 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
 
 /**
  * Handle sticker creation from image
+ * Downloads image, converts to WebP 512x512, then sends as sticker
  */
 async function handleStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
+    // Import sticker utility
+    const { createSticker, cleanupOldStickers } = await import("./sticker");
+
     try {
         // Check if message has media or is replying to media
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
@@ -516,11 +520,22 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
 
         await client.sendText(chatId, "⏳ Membuat sticker...");
 
-        // GOWA: Use sendImageAsSticker which sends image with sticker=true
-        await client.sendImageAsSticker(chatId, mediaUrl);
+        // Convert image to WebP sticker format
+        const sticker = await createSticker(mediaUrl);
+
+        // Clean up old stickers occasionally
+        cleanupOldStickers();
+
+        // Get localhost URL for the sticker
+        const stickerUrl = `http://localhost:3000${sticker.localUrl}`;
+        console.log(`[STICKER] Sending sticker from: ${stickerUrl}`);
+
+        // Send the WebP sticker
+        await client.sendImageAsSticker(chatId, stickerUrl);
         return { handled: true, response: "sticker sent" };
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error("[STICKER] Error:", errorMessage);
         await client.sendText(chatId, `❌ Gagal membuat sticker: ${errorMessage}`);
         return { handled: true, error: errorMessage };
     }
