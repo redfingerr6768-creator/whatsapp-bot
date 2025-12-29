@@ -221,6 +221,7 @@ export async function POST(req: NextRequest) {
             const msgPayload = {
                 id: body.message?.id || body.payload?.id || "",
                 from: chatId,
+                participant: body.message?.participant || body.payload?.participant, // For groups, this is the sender
                 body: messageText,
                 hasMedia,
                 mediaUrl,

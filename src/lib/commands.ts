@@ -11,6 +11,7 @@ import { createSticker, cleanupOldStickers } from "./sticker";
 import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
 import { getRandomDelay, setDelay, getBroadcastConfig } from "./broadcastConfig";
 import { convertImageForBroadcast, cleanupOldBroadcastMedia } from "./broadcastMedia";
+import { stickerToImage, videoToMp3 } from "./mediaTools";
 
 const GOWA_URL = process.env.GOWA_URL || "http://localhost:3030";
 const GOWA_BASIC_AUTH = process.env.GOWA_BASIC_AUTH;
@@ -24,6 +25,7 @@ export interface CommandResult {
 export interface MessagePayload {
     id: string;
     from: string;
+    participant?: string;
     body: string;
     hasMedia?: boolean;
     mediaUrl?: string;
@@ -56,6 +58,10 @@ const COMMANDS = {
     ADMIN_SETDELAY: ["/setdelay", "/delay"],
     // AI Query (available to everyone)
     AI_QUERY: ["/ai"],
+    // Useful tools
+    TAGALL: ["/tagall", "/hidetag", "/all", ".tagall"],
+    TOIMG: ["/toimg", "/toimage", ".toimg"],
+    TOMP3: ["/tomp3", "/mp3", ".tomp3"],
 };
 
 // Broadcast state for cancellation
@@ -188,6 +194,21 @@ _💡 Ketik command untuk memulai_`;
     // Download command
     if (COMMANDS.DOWNLOAD.includes(command)) {
         return await handleDownloadCommand(client, chatId, args, command);
+    }
+
+    // Tag All (Hidetag)
+    if (COMMANDS.TAGALL.includes(command)) {
+        return await handleTagAll(client, chatId, args, payload);
+    }
+
+    // Sticker to Image
+    if (COMMANDS.TOIMG.includes(command)) {
+        return await handleToImg(client, chatId, payload);
+    }
+
+    // Video to MP3
+    if (COMMANDS.TOMP3.includes(command)) {
+        return await handleToMp3(client, chatId, payload);
     }
 
     // === ADMIN COMMANDS ===
@@ -677,5 +698,108 @@ async function handleDownloadCommand(client: GowaClient, chatId: string, url: st
         console.error("Download error:", errorMessage);
         await client.sendText(chatId, `❌ *Download Gagal*\n\nError: ${errorMessage}\n\n_Pastikan link valid dan tidak private._`);
         return { handled: true, error: errorMessage };
+    }
+}
+
+/**
+ * Handle Tag All (Hidetag)
+ * Admin only command to tag everyone in the group
+ */
+async function handleTagAll(client: GowaClient, chatId: string, args: string, payload: MessagePayload): Promise<CommandResult> {
+    try {
+        // 1. Check if group
+        if (!chatId.endsWith("@g.us")) {
+            await client.sendText(chatId, "❌ *Perintah Grup*\n\n_Command ini hanya bisa digunakan di grup._");
+            return { handled: true, error: "not a group" };
+        }
+
+        // 2. Get group info
+        const group = await client.getGroupInfo(chatId);
+
+        // 3. Check if sender is admin
+        // Sender ID in group is in payload.participant
+        const senderId = payload.participant || payload.from;
+        if (!senderId) {
+            // Fallback if unable to identify sender
+            await client.sendText(chatId, "⚠️ *Gagal Identifikasi Admin*\n\n_Pastikan bot admin grup._");
+            return { handled: true, error: "no sender id" };
+        }
+
+        // Normalize sender ID (sometimes has : separator)
+        const senderJid = senderId.split(":")[0].split("@")[0];
+        const participant = group.participants.find(p => p.jid.split("@")[0] === senderJid);
+        const isAdmin = participant?.isAdmin || participant?.isSuperAdmin;
+
+        if (!isAdmin) {
+            await client.sendText(chatId, "❌ *Admin Only*\n\n_Hanya admin grup yang bisa menggunakan command ini._");
+            return { handled: true, error: "not admin" };
+        }
+
+        // 4. Get all participants for mention
+        const mentions = group.participants.map(p => p.jid);
+
+        // 5. Send message with mentions
+        // If args is empty, use a zero-width space or "." to make it "hidetag"
+        const text = args ? args : " "; // Simple space for hidetag if no text
+
+        await client.sendText(chatId, text, mentions);
+
+        return { handled: true, response: `tagged ${mentions.length} members` };
+    } catch (error: any) {
+        await client.sendText(chatId, `❌ *Gagal Tag All*\nError: ${error.message}`);
+        return { handled: true, error: error.message };
+    }
+}
+
+/**
+ * Handle Sticker to Image conversion
+ */
+async function handleToImg(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
+    try {
+        const quoted = payload.quotedMsg;
+        if (!quoted || !quoted.hasMedia || !quoted.mimetype?.includes("webp")) {
+            await client.sendText(chatId, "❌ *Reply Sticker*\n\n_Reply sticker yang ingin diubah ke gambar dengan /toimg_");
+            return { handled: true, error: "no quoted sticker" };
+        }
+
+        await client.sendText(chatId, "⏳ _Mengubah ke gambar..._");
+
+        const result = await stickerToImage(quoted.mediaUrl!);
+        const localUrl = `http://localhost:3000${result.localUrl}`;
+
+        await client.sendImage(chatId, localUrl, "✅ *Sticker to Image*");
+
+        return { handled: true, response: "sticker converted" };
+    } catch (error: any) {
+        await client.sendText(chatId, `❌ *Gagal Convert*\nError: ${error.message}`);
+        return { handled: true, error: error.message };
+    }
+}
+
+/**
+ * Handle Video to MP3 conversion
+ */
+async function handleToMp3(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
+    try {
+        // Check current message media or quoted media
+        const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
+        const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+
+        if (!mediaUrl || !mimetype.startsWith("video/")) {
+            await client.sendText(chatId, "❌ *Mana Videonya?*\n\n_Kirim/Reply video dengan /tomp3_");
+            return { handled: true, error: "no video" };
+        }
+
+        await client.sendText(chatId, "⏳ _Mengambil audio..._");
+
+        const result = await videoToMp3(mediaUrl);
+        const localUrl = `http://localhost:3000${result.localUrl}`;
+
+        await client.sendAudio(chatId, localUrl);
+
+        return { handled: true, response: "video converted to mp3" };
+    } catch (error: any) {
+        await client.sendText(chatId, `❌ *Gagal Convert*\nError: ${error.message}`);
+        return { handled: true, error: error.message };
     }
 }

@@ -245,10 +245,11 @@ export class GowaClient {
     }
 
     // ==================== MESSAGING ====================
-    async sendText(phone: string, message: string): Promise<GowaResponse> {
+    async sendText(phone: string, message: string, mentions?: string[]): Promise<GowaResponse> {
         const formData = this.createFormData({
             phone,
             message,
+            ...(mentions && mentions.length > 0 ? { mentions: mentions.join(",") } : {}),
         });
 
         return this.request(
