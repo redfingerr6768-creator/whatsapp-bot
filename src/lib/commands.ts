@@ -531,9 +531,12 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
 }
 
 /**
- * Handle video sticker creation - FAST VERSION
+ * Handle video sticker creation
+ * Downloads video → Converts to GIF 512x512 → Sends as sticker
  */
 async function handleVideoStickerCommand(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
+    const { createVideoSticker, cleanupOldVideoStickers } = await import("./vsticker");
+
     try {
         const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
         const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
@@ -548,12 +551,18 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
             return { handled: true, error: "not a video" };
         }
 
-        // Try to send video as sticker via /send/sticker
-        await client.sendVideoAsSticker(chatId, mediaUrl);
+        // Convert video to GIF (GOWA only accepts image/GIF for stickers)
+        const vsticker = await createVideoSticker(mediaUrl);
+        cleanupOldVideoStickers(); // Async cleanup
+
+        // Send GIF as sticker
+        const stickerUrl = `http://localhost:3000${vsticker.localUrl}`;
+        await client.sendVideoAsSticker(chatId, stickerUrl);
+
         return { handled: true, response: "video sticker sent" };
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : "Error";
-        await client.sendText(chatId, `❌ Video sticker gagal: ${msg}\n\n💡 Tip: WhatsApp hanya support video sticker max 6 detik`);
+        await client.sendText(chatId, `❌ Video sticker gagal: ${msg}`);
         return { handled: true, error: msg };
     }
 }
