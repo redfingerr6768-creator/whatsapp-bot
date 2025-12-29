@@ -10,7 +10,7 @@
     ],
     "matchType": "exact",
     "reply": "Hi! Welcome to our service. How can I help you today?",
-    "enabled": true,
+    "enabled": false,
     "createdAt": 1766998736614
   },
   {
@@ -24,7 +24,7 @@
     ],
     "matchType": "contains",
     "reply": "Thank you for your interest! Please check our catalog at example.com/catalog or contact our sales team.",
-    "enabled": true,
+    "enabled": false,
     "createdAt": 1766998736614
   },
   {
@@ -34,7 +34,7 @@
     ],
     "matchType": "contains",
     "reply": "I survived restart!",
-    "enabled": true,
+    "enabled": false,
     "id": "1766998827418",
     "createdAt": 1766998827418
   }

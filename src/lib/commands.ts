@@ -284,11 +284,16 @@ _Contoh: /ai apa itu blockchain?_
             await client.sendText(chatId, "❌ Format: /send <nomor>, <pesan>\n\n_Contoh: /send 628123456789, Halo!_");
             return { handled: true, error: "invalid format" };
         }
-        const targetNumber = parts[0].replace(/\D/g, "") + "@c.us";
+        // GOWA uses plain phone number without @c.us
+        const targetNumber = parts[0].replace(/\D/g, "");
         const message = parts.slice(1).join(", ");
+        if (!targetNumber || targetNumber.length < 10) {
+            await client.sendText(chatId, "❌ Nomor tidak valid. Gunakan format: 628xxx");
+            return { handled: true, error: "invalid number" };
+        }
         try {
             await client.sendText(targetNumber, message);
-            await client.sendText(chatId, `✅ Pesan terkirim ke ${parts[0]}`);
+            await client.sendText(chatId, `✅ Pesan terkirim ke ${targetNumber}`);
             return { handled: true, response: "sent" };
         } catch (e: any) {
             await client.sendText(chatId, `❌ Gagal kirim: ${e.message}`);
