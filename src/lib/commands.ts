@@ -106,43 +106,36 @@ export async function handleCommand(payload: MessagePayload): Promise<CommandRes
     if (COMMANDS.HELP.includes(command)) {
         const senderIsAdmin = isAdmin(chatId);
 
-        let helpText = `╔══════════════════════════════╗
-║    🤖 *BOT COMMAND CENTER*    ║
-╚══════════════════════════════╝
+        let helpText = `╭━━━  *BOT MENU*  ━━━╮
+┃  🤖 *AI Assistant*
+┃  📸 *Media Tools*
+┃  🛠️ *Utilities*
+╰━━━━━━━━━━━━━━━━╯
 
-━━━━━ 🎨 *KREATOR* ━━━━━
-📸 /sticker ➜ Gambar → Sticker
-🎬 /vsticker ➜ Video → Sticker animasi
-⬇️ /download [URL] ➜ Download video sosmed
-
-━━━━━ 🧠 *AI ASSISTANT* ━━━━━
-🤖 /ai [pertanyaan] ➜ Tanya AI apapun
-_Contoh: /ai apa itu blockchain?_
-
-━━━━━ ℹ️ *INFO* ━━━━━
-❓ /help ➜ Tampilkan menu ini
-🏓 /ping ➜ Cek status bot`;
+✨ *FITUR PUBLIK*
+📸 */sticker* » Gambar ke Sticker
+🎬 */vsticker* » Video ke Sticker (Gerak)
+⬇️ */download* [url] » Download Sosmed
+🧠 */ai* [tanya] » Tanya AI Pintar
+🏓 */ping* » Cek Status Bot`;
 
         if (senderIsAdmin) {
             helpText += `
 
-━━━━━ 👑 *ADMIN ONLY* ━━━━━
-📊 /status ➜ Status lengkap bot
-📁 /templates ➜ Lihat template grup
-📢 /broadcast [tpl], [msg] ➜ Broadcast
-🛑 /cancel ➜ Batalkan broadcast
-👥 /groups ➜ List semua grup
-📇 /contacts ➜ Info kontak
-✉️ /send [no], [msg] ➜ Kirim ke nomor
-📨 /sendgroup [id], [msg] ➜ Kirim ke grup
-🔄 /aitoggle ➜ ON/OFF AI response`;
+╭━━━  *ADMIN PANEL*  ━━━╮
+📢 */broadcast* [tpl], [pesan]
+💾 */templates* » List Template
+👥 */groups* » List Semua Grup
+🛑 */cancel* » Stop Broadcast
+⚙️ */setdelay* » Atur Jeda
+🔄 */aitoggle* » AI On/Off
+📨 */send* [no], [pesan]
+╰━━━━━━━━━━━━━━━━━╯`;
         }
 
         helpText += `
 
-╔══════════════════════════════╗
-║  💡 _Reply /help untuk bantuan_  ║
-╚══════════════════════════════╝`;
+_💡 Ketik command untuk memulai_`;
 
         await client.sendText(chatId, helpText);
         return { handled: true, response: "help sent" };
@@ -150,13 +143,18 @@ _Contoh: /ai apa itu blockchain?_
 
     // Ping command (public)
     if (COMMANDS.ADMIN_PING.includes(command)) {
-        const pongText = `🏓 *PONG!*
+        const uptime = process.uptime();
+        const uptimeStr = new Date(uptime * 1000).toISOString().substr(11, 8);
 
-╭─────────────────╮
-│  ✅ Bot Online   │
-│  ⚡ Latency: <1s │
-│  🕐 ${new Date().toLocaleTimeString('id-ID')}  │
-╰─────────────────╯`;
+        const pongText = `╭───  *SYSTEM STATUS*  ───╮
+│
+│  🟢 *ONLINE*
+│  ⚡ *Speed:* _Fast_
+│  ⏱️ *Uptime:* _${uptimeStr}_
+│  📅 *Server Time:*
+│  _${new Date().toLocaleString('id-ID')}_
+│
+╰─────────────────────╯`;
         await client.sendText(chatId, pongText);
         return { handled: true, response: "pong" };
     }
@@ -164,7 +162,14 @@ _Contoh: /ai apa itu blockchain?_
     // AI Query command (public) - /ai <question>
     if (COMMANDS.AI_QUERY.includes(command)) {
         if (!args) {
-            await client.sendText(chatId, `🤖 *AI Assistant*\n\n❌ Masukkan pertanyaan!\n\n_Contoh: /ai apa itu komputer?_`);
+            await client.sendText(chatId, `╭──  *AI ASSISTANT*  ──╮
+│
+│  ❌ *Pertanyaan Kosong!*
+│
+│  _Contoh penggunaan:_
+│  */ai apa itu koding?*
+│
+╰────────────────────╯`);
             return { handled: true, error: "no question" };
         }
         return await handleAiQuery(client, chatId, args);
@@ -192,19 +197,25 @@ _Contoh: /ai apa itu blockchain?_
     // Admin: Status command
     if (COMMANDS.ADMIN_STATUS.includes(command)) {
         if (!senderIsAdmin) {
-            return { handled: false }; // Silently ignore for non-admins
+            return { handled: false };
         }
         const templates = getGroupTemplates();
-        const statusText = `📊 *Bot Status*
+        const memoryUsage = process.memoryUsage().heapUsed / 1024 / 1024;
 
-✅ Bot aktif dan berjalan
-📁 Templates tersimpan: ${templates.length}
-🔧 Admin mode: aktif
-
-*Commands tersedia:*
-/broadcast <template> <pesan> - Broadcast ke template grup
-/templates - Lihat daftar template
-/status - Lihat status bot`;
+        const statusText = `╭━━━  *DASHBOARD*  ━━━╮
+│
+│  📊 *STATISTICS*
+│  • Status: 🟢 _Active_
+│  • Templates: _${templates.length}_
+│  • Memory: _${memoryUsage.toFixed(1)} MB_
+│  • Mode: _Admin Access_
+│
+│  🛠 *QUICK ACTIONS*
+│  • /broadcast
+│  • /templates
+│  • /groups
+│
+╰━━━━━━━━━━━━━━━━━╯`;
 
         await client.sendText(chatId, statusText);
         return { handled: true, response: "status sent" };
@@ -217,66 +228,23 @@ _Contoh: /ai apa itu blockchain?_
         }
         const templates = getGroupTemplates();
         if (templates.length === 0) {
-            await client.sendText(chatId, "📁 Belum ada template tersimpan.\n\nBuat template di Dashboard → Broadcast atau Groups.");
+            await client.sendText(chatId, "❌ *Tidak Ada Template*\n\n_Buat template di Dashboard → Broadcast atau Groups._");
             return { handled: true, response: "no templates" };
         }
 
         const templateList = templates.map((t, i) =>
-            `${i + 1}. *${t.name}* (${t.groupIds.length} grup)`
+            `│ ${i + 1}. *${t.name}* (${t.groupIds.length} grup)`
         ).join("\n");
 
-        await client.sendText(chatId, `📁 *Daftar Template*\n\n${templateList}\n\nGunakan: /broadcast <nama_template>, <pesan>\n_Kirim dengan media untuk broadcast gambar/video!_`);
+        await client.sendText(chatId, `╭━━━  *DAFTAR TEMPLATE*  ━━━╮
+│
+${templateList}
+│
+│  _Gunakan:_
+│  */broadcast <nama>, <pesan>*
+│
+╰━━━━━━━━━━━━━━━━━━╯`);
         return { handled: true, response: "templates listed" };
-    }
-
-    // Admin: Cancel broadcast
-    if (COMMANDS.ADMIN_CANCEL.includes(command)) {
-        if (!senderIsAdmin) return { handled: false };
-        if (!broadcastInProgress) {
-            await client.sendText(chatId, "❌ Tidak ada broadcast yang sedang berjalan.");
-            return { handled: true, response: "no broadcast" };
-        }
-        cancelBroadcast = true;
-        await client.sendText(chatId, "🛑 Menghentikan broadcast...");
-        return { handled: true, response: "cancelling" };
-    }
-
-    // Admin: Broadcast command
-    if (COMMANDS.ADMIN_BROADCAST.includes(command)) {
-        if (!senderIsAdmin) {
-            return { handled: false };
-        }
-        return await handleAdminBroadcast(client, chatId, args, payload);
-    }
-
-    // Admin: Set broadcast delay
-    if (COMMANDS.ADMIN_SETDELAY.includes(command)) {
-        if (!senderIsAdmin) return { handled: false };
-
-        const config = getBroadcastConfig();
-
-        if (!args) {
-            // Show current delay
-            const minSec = (config.minDelay / 1000).toFixed(1);
-            const maxSec = (config.maxDelay / 1000).toFixed(1);
-            await client.sendText(chatId, `⏱️ *Delay Broadcast*\n\nMin: ${minSec}s\nMax: ${maxSec}s\n\nUntuk mengubah:\n/setdelay <min> [max]\n\nContoh:\n/setdelay 1 → 1-4 detik\n/setdelay 2 5 → 2-5 detik\n/setdelay 0.5 1 → 0.5-1 detik`);
-            return { handled: true, response: "delay shown" };
-        }
-
-        const parts = args.split(/\s+/);
-        const minSec = parseFloat(parts[0]);
-        const maxSec = parts[1] ? parseFloat(parts[1]) : undefined;
-
-        if (isNaN(minSec) || minSec < 0) {
-            await client.sendText(chatId, "❌ Format salah. Contoh: /setdelay 2 5");
-            return { handled: true, error: "invalid format" };
-        }
-
-        const newConfig = setDelay(minSec, maxSec, payload.from);
-        const newMinSec = (newConfig.minDelay / 1000).toFixed(1);
-        const newMaxSec = (newConfig.maxDelay / 1000).toFixed(1);
-        await client.sendText(chatId, `✅ Delay broadcast diubah!\n\nMin: ${newMinSec}s\nMax: ${newMaxSec}s`);
-        return { handled: true, response: "delay updated" };
     }
 
     // Admin: List groups command
@@ -285,16 +253,23 @@ _Contoh: /ai apa itu blockchain?_
         try {
             const groups = await client.getGroups();
             if (!groups || groups.length === 0) {
-                await client.sendText(chatId, "👥 Tidak ada grup yang terhubung.");
+                await client.sendText(chatId, "❌ *Tidak Ada Grup*\n\n_Bot belum terhubung ke grup manapun._");
                 return { handled: true, response: "no groups" };
             }
-            const groupList = groups.slice(0, 20).map((g: any, i: number) =>
-                `${i + 1}. ${g.subject || g.name || g.id}`
+            const groupList = groups.slice(0, 15).map((g: any, i: number) =>
+                `│ ${i + 1}. ${g.subject || g.name || g.id}`
             ).join("\n");
-            await client.sendText(chatId, `👥 *Daftar Grup (${groups.length} total)*\n\n${groupList}${groups.length > 20 ? "\n\n_... dan " + (groups.length - 20) + " grup lainnya_" : ""}`);
+
+            await client.sendText(chatId, `╭━━━  *DAFTAR GRUP*  ━━━╮
+│  Total: ${groups.length} Grup
+│
+${groupList}
+${groups.length > 15 ? `│  _... dan ${groups.length - 15} lainnya_` : ""}
+│
+╰━━━━━━━━━━━━━━━━╯`);
             return { handled: true, response: "groups listed" };
         } catch (e) {
-            await client.sendText(chatId, "❌ Gagal mengambil daftar grup");
+            await client.sendText(chatId, "❌ *Gagal mengambil data grup*");
             return { handled: true, error: "failed to get groups" };
         }
     }
@@ -304,10 +279,15 @@ _Contoh: /ai apa itu blockchain?_
         if (!senderIsAdmin) return { handled: false };
         try {
             const contacts = await client.getContacts();
-            await client.sendText(chatId, `📇 *Info Kontak*\n\n📱 Total kontak: ${contacts?.length || 0}`);
+            await client.sendText(chatId, `╭───  *INFO KONTAK*  ───╮
+│
+│  📇 *Total Kontak:*
+│  _${contacts?.length || 0} Kontak tersimpan_
+│
+╰───────────────────╯`);
             return { handled: true, response: "contacts info" };
         } catch (e) {
-            await client.sendText(chatId, "❌ Gagal mengambil info kontak");
+            await client.sendText(chatId, "❌ *Gagal mengambil data kontak*");
             return { handled: true, error: "failed" };
         }
     }
@@ -317,22 +297,22 @@ _Contoh: /ai apa itu blockchain?_
         if (!senderIsAdmin) return { handled: false };
         const parts = parseArgs(args);
         if (parts.length < 2) {
-            await client.sendText(chatId, "❌ Format: /send <nomor>, <pesan>\n\n_Contoh: /send 628123456789, Halo!_");
+            await client.sendText(chatId, "❌ *Format Salah*\n\n_Contoh: /send 628123456789, Halo!_");
             return { handled: true, error: "invalid format" };
         }
         // GOWA uses plain phone number without @c.us
         const targetNumber = parts[0].replace(/\D/g, "");
         const message = parts.slice(1).join(", ");
         if (!targetNumber || targetNumber.length < 10) {
-            await client.sendText(chatId, "❌ Nomor tidak valid. Gunakan format: 628xxx");
+            await client.sendText(chatId, "❌ *Nomor Tidak Valid*\n_Gunakan format internasional: 628xxx_");
             return { handled: true, error: "invalid number" };
         }
         try {
             await client.sendText(targetNumber, message);
-            await client.sendText(chatId, `✅ Pesan terkirim ke ${targetNumber}`);
+            await client.sendText(chatId, `✅ *PESAN TERKIRIM*\nTujuan: ${targetNumber}`);
             return { handled: true, response: "sent" };
         } catch (e: any) {
-            await client.sendText(chatId, `❌ Gagal kirim: ${e.message}`);
+            await client.sendText(chatId, `❌ *Gagal Kirim*\nError: ${e.message}`);
             return { handled: true, error: e.message };
         }
     }
@@ -342,17 +322,17 @@ _Contoh: /ai apa itu blockchain?_
         if (!senderIsAdmin) return { handled: false };
         const parts = parseArgs(args);
         if (parts.length < 2) {
-            await client.sendText(chatId, "❌ Format: /sendgroup <groupId>, <pesan>\n\n_Contoh: /sendgroup 120363xxx@g.us, Halo grup!_");
+            await client.sendText(chatId, "❌ *Format Salah*\n\n_Contoh: /sendgroup 120363xxx@g.us, Halo grup!_");
             return { handled: true, error: "invalid format" };
         }
         const groupId = parts[0];
         const message = parts.slice(1).join(", ");
         try {
             await client.sendText(groupId, message);
-            await client.sendText(chatId, `✅ Pesan terkirim ke grup`);
+            await client.sendText(chatId, `✅ *PESAN TERKIRIM KE GRUP*`);
             return { handled: true, response: "sent to group" };
         } catch (e: any) {
-            await client.sendText(chatId, `❌ Gagal kirim: ${e.message}`);
+            await client.sendText(chatId, `❌ *Gagal Kirim*\nError: ${e.message}`);
             return { handled: true, error: e.message };
         }
     }
@@ -365,10 +345,14 @@ _Contoh: /ai apa itu blockchain?_
             const config = getGroqConfig();
             const newState = !config.enabled;
             updateGroqConfig({ enabled: newState });
-            await client.sendText(chatId, `🤖 AI Response: ${newState ? "✅ *AKTIF*" : "❌ *NONAKTIF*"}`);
+            await client.sendText(chatId, `╭━━━  *AI CONFIG*  ━━━╮
+│
+│  Status: ${newState ? "🟢 *AKTIF*" : "🔴 *NONAKTIF*"}
+│
+╰━━━━━━━━━━━━━━━━━╯`);
             return { handled: true, response: `ai ${newState ? "enabled" : "disabled"}` };
         } catch (e: any) {
-            await client.sendText(chatId, `❌ Gagal toggle AI: ${e.message}`);
+            await client.sendText(chatId, `❌ *Gagal Setting AI*\nError: ${e.message}`);
             return { handled: true, error: e.message };
         }
     }
@@ -386,12 +370,12 @@ async function handleAiQuery(client: GowaClient, chatId: string, question: strin
         const config = getGroqConfig();
 
         if (!config.enabled) {
-            await client.sendText(chatId, "🤖 AI sedang tidak aktif.\n\n_Admin dapat mengaktifkan dengan /aitoggle_");
+            await client.sendText(chatId, "🤖 *AI sedang istirahat*\n\n_Silakan hubungi admin untuk mengaktifkan._");
             return { handled: true, error: "AI disabled" };
         }
 
         // Send typing indicator
-        await client.sendText(chatId, "🧠 _Thinking..._");
+        await client.sendText(chatId, "🧠 _Sedang berpikir..._");
 
         const aiResponse = await generateAIResponse(question);
 
@@ -399,25 +383,21 @@ async function handleAiQuery(client: GowaClient, chatId: string, question: strin
         const emojis = ["✨", "💡", "🎯", "🔮", "⚡", "🌟", "💫", "🚀"];
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
 
-        const styledResponse = `╭───────────────────────╮
-│   ${randomEmoji} *AI ASSISTANT* ${randomEmoji}   │
-╰───────────────────────╯
-
+        const styledResponse = `╭━━━  ${randomEmoji} *AI ASSISTANT*  ━━━╮
+│
 📝 *Pertanyaan:*
 _${question}_
-
-━━━━━━━━━━━━━━━━━━━━━━
-
+━━━━━━━━━━━━━━━━━━━━
 💬 *Jawaban:*
 ${aiResponse}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🤖 _Powered by Groq AI_`;
+━━━━━━━━━━━━━━━━━━━━
+🤖 _Powered by Groq AI_
+╰━━━━━━━━━━━━━━━━━━━╯`;
 
         await client.sendText(chatId, styledResponse);
         return { handled: true, response: "ai response sent" };
     } catch (error: any) {
-        await client.sendText(chatId, `❌ AI Error: ${error.message}\n\n_Coba lagi nanti._`);
+        await client.sendText(chatId, `❌ *AI Error*\n${error.message}\n\n_Silakan coba lagi nanti._`);
         return { handled: true, error: error.message };
     }
 }
@@ -431,14 +411,14 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
     try {
         // Check if already broadcasting
         if (broadcastInProgress) {
-            await client.sendText(adminChatId, "⚠️ Broadcast sedang berjalan!\n\nGunakan /cancel untuk membatalkan.");
+            await client.sendText(adminChatId, "⚠️ *BROADCAST SEDANG BERJALAN*\n\n_Gunakan /cancel untuk membatalkan._");
             return { handled: true, error: "broadcast in progress" };
         }
 
         // Parse template name and message (comma separated)
         const parts = args.split(",").map(a => a.trim());
         if (parts.length < 2 || !parts[0] || !parts[1]) {
-            await client.sendText(adminChatId, `❌ Format salah.\n\nGunakan: /broadcast <nama_template>, <pesan>\nContoh: /broadcast marketing, Promo hari ini!\n\n_Kirim dengan gambar/video untuk broadcast media!_`);
+            await client.sendText(adminChatId, `❌ *Format Salah*\n\nGunakan:\n*/broadcast <template>, <pesan>*\n\n_Contoh: /broadcast marketing, Promo gila!_`);
             return { handled: true, error: "invalid format" };
         }
 
@@ -459,7 +439,7 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
 
         if (!template) {
             const available = templates.map(t => t.name).join(", ") || "tidak ada";
-            await client.sendText(adminChatId, `❌ Template "${templateName}" tidak ditemukan.\n\nTemplate tersedia: ${available}`);
+            await client.sendText(adminChatId, `❌ *Template Tidak Ditemukan*\n\nTemplate tersedia:\n${available}`);
             return { handled: true, error: "template not found" };
         }
 
@@ -469,7 +449,7 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
 
         // Check if template has groups
         if (totalGroups === 0) {
-            await client.sendText(adminChatId, `❌ Template "${template.name}" tidak memiliki grup!\n\nTambahkan grup di Dashboard → Groups → pilih grup → Save as Template`);
+            await client.sendText(adminChatId, `❌ *Template Kosong*\n\n_Template "${template.name}" tidak memiliki grup._`);
             return { handled: true, error: "template has no groups" };
         }
 
@@ -482,20 +462,27 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
 
         if (hasMedia && mimetype.startsWith("image/")) {
             try {
-                await client.sendText(adminChatId, "⏳ Memproses gambar untuk broadcast...");
+                await client.sendText(adminChatId, "⏳ _Mengkonversi media..._");
                 const converted = await convertImageForBroadcast(mediaUrl!);
                 finalMediaUrl = `http://localhost:3000${converted.localUrl}`;
                 cleanupOldBroadcastMedia(); // Async cleanup
                 console.log(`[BROADCAST] Image converted to: ${finalMediaUrl}`);
             } catch (error: any) {
                 console.error(`[BROADCAST] Image conversion failed: ${error.message}`);
-                await client.sendText(adminChatId, `⚠️ Gagal konversi gambar: ${error.message}\nMencoba kirim URL asli...`);
+                await client.sendText(adminChatId, `⚠️ *Gagal Konversi Gambar*\n${error.message}\n_Mencoba kirim gambar asli..._`);
             }
         }
 
         // Send broadcast notification
         const mediaInfo = hasMedia ? `\n📎 Media: ${mimetype.split("/")[0]}` : "";
-        await client.sendText(adminChatId, `📡 *Mulai broadcast...*\n\nTemplate: ${template.name}\nGrup: ${totalGroups}${mediaInfo}\nPesan: ${message}\n\n_Ketik /cancel untuk membatalkan_`);
+        await client.sendText(adminChatId, `╭━━━  *BROADCAST START*  ━━━╮
+│
+│  📡 *Target:* ${template.name}
+│  👥 *Jumlah:* ${totalGroups} Grup${mediaInfo}
+│  📝 *Pesan:*
+│  _${message.length > 50 ? message.substring(0, 50) + "..." : message}_
+│
+╰──  _Ketik /cancel untuk stop_  ──╯`);
 
         // Send to all groups
         let successCount = 0;
@@ -542,11 +529,25 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         // Send result
         if (cancelBroadcast) {
             cancelBroadcast = false;
-            await client.sendText(adminChatId, `🛑 *Broadcast dibatalkan!*\n\n✓ Terkirim: ${successCount}\n✗ Gagal: ${failCount}\n⏸️ Dibatalkan pada: ${cancelledAt}/${totalGroups}`);
+            await client.sendText(adminChatId, `╭━━━  *BROADCAST STOPPED*  ━━━╮
+│
+│  🛑 *Dibatalkan oleh Admin*
+│  ✓ Terkirim: ${successCount}
+│  ✗ Gagal: ${failCount}
+│  ⏸️ Posisi: ${cancelledAt}/${totalGroups}
+│
+╰━━━━━━━━━━━━━━━━━━━━╯`);
             return { handled: true, response: "broadcast cancelled" };
         }
 
-        await client.sendText(adminChatId, `✅ *Broadcast selesai!*\n\n✓ Berhasil: ${successCount}\n✗ Gagal: ${failCount}\n📊 Total: ${totalGroups} grup`);
+        await client.sendText(adminChatId, `╭━━━  *BROADCAST DONE*  ━━━╮
+│
+│  ✅ *Selesai!*
+│  ✓ Berhasil: ${successCount}
+│  ✗ Gagal: ${failCount}
+│  📊 Total Target: ${totalGroups}
+│
+╰━━━━━━━━━━━━━━━━━━━╯`);
         return { handled: true, response: `broadcast sent to ${successCount} groups` };
     } catch (error: any) {
         broadcastInProgress = false;
@@ -565,12 +566,12 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
         const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
 
         if (!mediaUrl) {
-            await client.sendText(chatId, "❌ Kirim gambar dengan /sticker");
+            await client.sendText(chatId, "❌ *Mana Gambarnya?*\n\n_Kirim gambar dengan caption /sticker_");
             return { handled: true, error: "no media" };
         }
 
         if (!mimetype.startsWith("image/")) {
-            await client.sendText(chatId, "❌ File harus gambar");
+            await client.sendText(chatId, "❌ *Format Salah*\n\n_File harus berupa gambar (JPG/PNG)_");
             return { handled: true, error: "not an image" };
         }
 
@@ -584,7 +585,7 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
         return { handled: true, response: "sticker sent" };
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : "Error";
-        await client.sendText(chatId, `❌ Gagal: ${msg}`);
+        await client.sendText(chatId, `❌ *Gagal Membuat Sticker*\n\nError: ${msg}`);
         return { handled: true, error: msg };
     }
 }
@@ -600,12 +601,12 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
         const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
 
         if (!mediaUrl) {
-            await client.sendText(chatId, "❌ Kirim video dengan /vsticker");
+            await client.sendText(chatId, "❌ *Mana Videonya?*\n\n_Kirim video dengan caption /vsticker_");
             return { handled: true, error: "no media" };
         }
 
         if (!mimetype.startsWith("video/")) {
-            await client.sendText(chatId, "❌ File harus video (MP4, max 6 detik)");
+            await client.sendText(chatId, "❌ *Format Salah*\n\n_File harus video (MP4, max 6 detik)_");
             return { handled: true, error: "not a video" };
         }
 
@@ -620,7 +621,7 @@ async function handleVideoStickerCommand(client: GowaClient, chatId: string, pay
         return { handled: true, response: "video sticker sent" };
     } catch (error: unknown) {
         const msg = error instanceof Error ? error.message : "Error";
-        await client.sendText(chatId, `❌ Video sticker gagal: ${msg}`);
+        await client.sendText(chatId, `❌ *Gagal Video Sticker*\n\nError: ${msg}\n_Pastikan video < 6 detik_`);
         return { handled: true, error: msg };
     }
 }
@@ -640,17 +641,17 @@ function getLocalFileUrl(relativePath: string): string {
 async function handleDownloadCommand(client: GowaClient, chatId: string, url: string, command: string): Promise<CommandResult> {
     try {
         if (!url) {
-            await client.sendText(chatId, "❌ Masukkan URL video. Contoh: /download https://tiktok.com/...");
+            await client.sendText(chatId, "❌ *Mana URL-nya?*\n\n_Contoh: /download https://tiktok.com/..._");
             return { handled: true, error: "no url" };
         }
 
         // Validate URL
         if (!url.startsWith("http")) {
-            await client.sendText(chatId, "❌ URL tidak valid. Harus dimulai dengan http:// atau https://");
+            await client.sendText(chatId, "❌ *Link Tidak Valid*\n\n_Harus dimulai dengan http:// atau https://_");
             return { handled: true, error: "invalid url" };
         }
 
-        await client.sendText(chatId, "⏳ Mendownload video, mohon tunggu...");
+        await client.sendText(chatId, "⏳ *Sedang Mendownload...*\n_Mohon tunggu sebentar_");
 
         // Download video locally using yt-dlp
         const result = await downloadVideo(url);
@@ -662,12 +663,19 @@ async function handleDownloadCommand(client: GowaClient, chatId: string, url: st
         const localUrl = getLocalFileUrl(result.localUrl);
 
         // Send the video from local server
-        await client.sendVideo(chatId, localUrl, `📹 ${result.platform}\n${result.title || ""}`);
+        await client.sendVideo(chatId, localUrl, `╭━━━  *DOWNLOAD SUCCESS*  ━━━╮
+│
+│  🎬 *Title:*
+│  _${result.title || "Video Tanpa Judul"}_
+│
+│  📱 *Platform:* ${result.platform}
+│
+╰──  _Powered by Gowa Bot_  ──╯`);
         return { handled: true, response: "video sent" };
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         console.error("Download error:", errorMessage);
-        await client.sendText(chatId, `❌ Gagal download: ${errorMessage}`);
+        await client.sendText(chatId, `❌ *Download Gagal*\n\nError: ${errorMessage}\n\n_Pastikan link valid dan tidak private._`);
         return { handled: true, error: errorMessage };
     }
 }
