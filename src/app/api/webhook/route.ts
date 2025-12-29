@@ -107,9 +107,11 @@ function isOwnMessage(payload: GowaWebhookPayload, deviceId: string): boolean {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
+        // DEBUG: Log full body to inspect structure for quoted media
+        console.log(`[WEBHOOK] Full Body:`, JSON.stringify(body, null, 2));
 
-        // File logging only for debugging (console removed for speed)
-        logToFile(`WEBHOOK: ${JSON.stringify(body)}`);
+        // Use file logging for persistence
+        logToFile(`[WEBHOOK] Received payload: ${JSON.stringify(body).substring(0, 500)}...`);
 
         // GOWA has two payload formats:
         // 1. Test/Old format: {event: "message", device_id: "...", payload: {from, body, ...}}
@@ -217,16 +219,36 @@ export async function POST(req: NextRequest) {
                 console.log(`[WEBHOOK] Found document: ${mediaUrl}`);
             }
 
+
+            // Parse ChatID and Participant from GOWA "from" field format: "SENDER in GROUP"
+            // Example: "628xxx@s.whatsapp.net in 123456@g.us"
+            let finalChatId = chatId;
+            let finalParticipant = body.message?.participant || body.payload?.participant;
+
+            const fromField = body.from || "";
+            if (fromField.includes(" in ")) {
+                const parts = fromField.split(" in ");
+                if (parts.length === 2) {
+                    finalParticipant = parts[0]; // SENDER
+                    finalChatId = parts[1];      // GROUP
+                }
+            }
+            // Fix for numeric-only chat_id (missing suffix)
+            if (finalChatId && !finalChatId.includes("@") && finalChatId.length > 15) {
+                finalChatId += "@g.us"; // Assume group if long numeric
+            }
+
             // Build message payload with media
             const msgPayload = {
                 id: body.message?.id || body.payload?.id || "",
-                from: chatId,
-                participant: body.message?.participant || body.payload?.participant, // For groups, this is the sender
+                from: finalChatId,
+                participant: finalParticipant, // For groups, this is the sender
                 body: messageText,
                 hasMedia,
                 mediaUrl,
                 mimetype,
                 quotedMsg: body.message?.replied_id ? {
+                    id: body.message?.replied_id,
                     hasMedia: false,
                     mediaUrl: "",
                     mimetype: "",

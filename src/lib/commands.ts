@@ -31,6 +31,7 @@ export interface MessagePayload {
     mediaUrl?: string;
     mimetype?: string;
     quotedMsg?: {
+        id?: string;
         hasMedia?: boolean;
         mediaUrl?: string;
         mimetype?: string;
@@ -754,17 +755,91 @@ async function handleTagAll(client: GowaClient, chatId: string, args: string, pa
 /**
  * Handle Sticker to Image conversion
  */
+// Helper to get media from quoted message (with history fallback)
+async function getMediaFromQuoted(client: GowaClient, chatId: string, quotedMsg: { id?: string, hasMedia?: boolean, mediaUrl?: string, mimetype?: string }): Promise<{ mediaUrl?: string, mimetype?: string }> {
+    // 1. If payload has media, use it
+    if (quotedMsg.hasMedia && quotedMsg.mediaUrl) {
+        return { mediaUrl: quotedMsg.mediaUrl, mimetype: quotedMsg.mimetype || "" };
+    }
+
+    // 2. Fallback: Fetch message from history if we have ID
+    if (quotedMsg.id) {
+        try {
+            console.log(`[MEDIA_FALLBACK] Fetching msg ${quotedMsg.id} from ${chatId}`);
+            // Fetch recent 20 messages (usually enough for direct reply)
+            // @ts-ignore
+            const messages = await client.getChatMessages(chatId, 50);
+
+            // Find message by ID
+            // @ts-ignore
+            const msg: any = messages.find((m: any) => m.id === quotedMsg.id || m.key?.id === quotedMsg.id);
+
+            if (msg) {
+                // Determine raw GOWA URL
+                const GOWA_BASE = process.env.GOWA_URL || "http://localhost:3030";
+
+                // Check common media fields in history object
+                // GOWA history might have different structure than webhook
+                let mediaPath = "";
+                let mimeType = "";
+
+                // Check image
+                if (msg.imageMessage || (msg.image && msg.image.media_path)) {
+                    mediaPath = msg.imageMessage?.url || msg.image?.media_path;
+                    mimeType = msg.imageMessage?.mimetype || msg.image?.mime_type || "image/jpeg";
+                }
+                // Check sticker
+                else if (msg.stickerMessage || (msg.sticker && msg.sticker.media_path)) {
+                    // GOWA sticker payload
+                    mediaPath = msg.stickerMessage?.url || msg.sticker?.media_path;
+                    mimeType = msg.stickerMessage?.mimetype || msg.sticker?.mime_type || "image/webp";
+                }
+                // Check video
+                else if (msg.videoMessage || (msg.video && msg.video.media_path)) {
+                    mediaPath = msg.videoMessage?.url || msg.video?.media_path;
+                    mimeType = msg.videoMessage?.mimetype || msg.video?.mime_type || "video/mp4";
+                }
+
+                if (mediaPath) {
+                    // Normalize URL (if it's a path, prepend GOWA_BASE)
+                    const fullUrl = mediaPath.startsWith("http") ? mediaPath : `${GOWA_BASE}/${mediaPath}`;
+                    console.log(`[MEDIA_FALLBACK] Found media: ${fullUrl} (${mimeType})`);
+                    return { mediaUrl: fullUrl, mimetype: mimeType };
+                }
+            }
+        } catch (e) {
+            console.error("[MEDIA_FALLBACK] Error:", e);
+        }
+    }
+
+    return { mediaUrl: undefined, mimetype: undefined };
+}
+
+/**
+ * Handle Sticker to Image conversion
+ */
 async function handleToImg(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
     try {
         const quoted = payload.quotedMsg;
-        if (!quoted || !quoted.hasMedia || !quoted.mimetype?.includes("webp")) {
+        if (!quoted) {
             await client.sendText(chatId, "❌ *Reply Sticker*\n\n_Reply sticker yang ingin diubah ke gambar dengan /toimg_");
-            return { handled: true, error: "no quoted sticker" };
+            return { handled: true, error: "no quoted message" };
+        }
+
+        /* Attempt to get media, falling back to history fetch */
+        const { mediaUrl, mimetype } = await getMediaFromQuoted(client, chatId, quoted);
+
+        if (!mediaUrl || !mimetype?.includes("webp")) {
+            // Try check if it was image/jpeg (maybe user replied to image?)
+            // But command is for sticker. User wants to save sticker as image.
+            // If quoted message is missing media info completely:
+            await client.sendText(chatId, "❌ *Gagal Mengambil Sticker*\n\n_Pastikan reply sticker yang valid. Coba kirim ulang stickernya lalu reply._");
+            return { handled: true, error: "no quoted media found" };
         }
 
         await client.sendText(chatId, "⏳ _Mengubah ke gambar..._");
 
-        const result = await stickerToImage(quoted.mediaUrl!);
+        const result = await stickerToImage(mediaUrl);
         const localUrl = `http://localhost:3000${result.localUrl}`;
 
         await client.sendImage(chatId, localUrl, "✅ *Sticker to Image*");
@@ -781,9 +856,18 @@ async function handleToImg(client: GowaClient, chatId: string, payload: MessageP
  */
 async function handleToMp3(client: GowaClient, chatId: string, payload: MessagePayload): Promise<CommandResult> {
     try {
-        // Check current message media or quoted media
-        const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
-        const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+        // Check current message media first
+        let mediaUrl = payload.mediaUrl;
+        let mimetype = payload.mimetype || "";
+
+        // If no media in current message, checks quoted
+        if (!mediaUrl) {
+            if (payload.quotedMsg) {
+                const quotedMedia = await getMediaFromQuoted(client, chatId, payload.quotedMsg);
+                mediaUrl = quotedMedia.mediaUrl;
+                mimetype = quotedMedia.mimetype || "";
+            }
+        }
 
         if (!mediaUrl || !mimetype.startsWith("video/")) {
             await client.sendText(chatId, "❌ *Mana Videonya?*\n\n_Kirim/Reply video dengan /tomp3_");
