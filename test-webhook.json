@@ -1,0 +1,11 @@
+{
+    "event": "message",
+    "device_id": "test@s.whatsapp.net",
+    "payload": {
+        "id": "123",
+        "chat_id": "6285137862924@s.whatsapp.net",
+        "from": "6285137862924@s.whatsapp.net",
+        "from_name": "Test",
+        "body": "/help"
+    }
+}

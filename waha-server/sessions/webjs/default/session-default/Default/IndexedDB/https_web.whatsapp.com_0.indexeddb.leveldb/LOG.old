@@ -1,0 +1,13 @@
+2025/12/29-01:49:48.708 1fc Recovering log #101
+2025/12/29-01:49:48.731 1fc Level-0 table #106: started
+2025/12/29-01:49:49.368 1fc Level-0 table #106: 108635 bytes OK
+2025/12/29-01:49:49.839 1fc Delete type=2 #97
+2025/12/29-01:49:49.860 1fc Delete type=0 #101
+2025/12/29-01:49:49.865 1fc Delete type=2 #103
+2025/12/29-01:49:49.876 1fc Delete type=3 #98
+2025/12/29-01:49:50.875 200 Moved #106 to level-1 108635 bytes OK: files[ 0 1 1 0 0 0 0 ]
+2025/12/29-01:49:51.147 200 Compacting 1@1 + 1@2 files
+2025/12/29-01:49:58.399 200 Generated table #108@1: 36157 keys, 1661248 bytes
+2025/12/29-01:49:58.406 200 Compacted 1@1 + 1@2 files => 1661248 bytes
+2025/12/29-01:49:58.441 200 compacted to: files[ 0 0 1 0 0 0 0 ]
+2025/12/29-01:49:58.465 200 Manual compaction at level-0 from '\x001\x00\x00\x00' @ 72057594037927935 : 1 .. '\x002\x00\x00\x00' @ 0 : 0; will stop at (end)

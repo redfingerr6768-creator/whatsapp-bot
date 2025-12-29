@@ -1,0 +1,11 @@
+{
+    "event": "message",
+    "device_id": "test_device",
+    "payload": {
+        "id": "msg_123",
+        "chat_id": "628999999999@c.us",
+        "from": "628999999999@c.us",
+        "body": "halo",
+        "timestamp": 1234567890
+    }
+}

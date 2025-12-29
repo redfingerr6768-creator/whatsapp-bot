@@ -1,0 +1,94 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Settings for the application (singleton mostly, or per user)
+model SystemSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String?
+  email     String?
+  notes     String?
+  isBlocked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags      Tag[]
+  groups    ContactGroup[]
+  sentMessages Message[]
+}
+
+model Tag {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  color    String    @default("#000000")
+  contacts Contact[]
+}
+
+model ContactGroup {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  contacts    Contact[]
+  createdAt   DateTime  @default(now())
+}
+
+model Campaign {
+  id          String    @id @default(cuid())
+  name        String
+  status      String    @default("DRAFT") // DRAFT, SCHEDULED, RUNNING, COMPLETED, PAUSED, FAILED
+  scheduledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Content
+  messageTemplate String
+  mediaUrl        String?
+  mediaType       String? // IMAGE, VIDEO, AUDIO, DOCUMENT
+
+  // Stats
+  totalContacts   Int      @default(0)
+  sentCount       Int      @default(0)
+  failedCount     Int      @default(0)
+
+  messages        Message[]
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  status     String   @default("PENDING") // PENDING, SENT, FAILED, DELIVERED, READ
+  sentAt     DateTime?
+  error      String?
+  
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  createdAt  DateTime @default(now())
+}
+
+model AutoReplyRule {
+  id        String   @id @default(cuid())
+  keyword   String
+  matchType String   @default("EXACT") // EXACT, CONTAINS, REGEX
+  response  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}

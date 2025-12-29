@@ -1,0 +1,13 @@
+2025/12/29-01:56:15.356 2ff Recovering log #107
+2025/12/29-01:56:15.401 2ff Level-0 table #110: started
+2025/12/29-01:56:16.050 2ff Level-0 table #110: 118606 bytes OK
+2025/12/29-01:56:16.300 2ff Delete type=2 #104
+2025/12/29-01:56:16.303 2ff Delete type=2 #106
+2025/12/29-01:56:16.305 2ff Delete type=0 #107
+2025/12/29-01:56:16.309 2ff Delete type=3 #105
+2025/12/29-01:56:17.526 301 Moved #110 to level-1 118606 bytes OK: files[ 0 1 1 0 0 0 0 ]
+2025/12/29-01:56:18.016 301 Compacting 1@1 + 1@2 files
+2025/12/29-01:56:24.935 301 Generated table #112@1: 36991 keys, 1691787 bytes
+2025/12/29-01:56:24.937 301 Compacted 1@1 + 1@2 files => 1691787 bytes
+2025/12/29-01:56:24.948 301 compacted to: files[ 0 0 1 0 0 0 0 ]
+2025/12/29-01:56:24.972 301 Manual compaction at level-0 from '\x002\x00\x00\x00' @ 72057594037927935 : 1 .. '\x003\x00\x00\x00' @ 0 : 0; will stop at (end)

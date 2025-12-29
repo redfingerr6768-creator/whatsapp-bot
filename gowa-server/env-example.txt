@@ -1,0 +1,12 @@
+# GOWA Server Environment Configuration
+# Copy this content to your main project .env file
+
+# GOWA Configuration
+GOWA_URL=http://localhost:3030
+# GOWA_BASIC_AUTH=username:password  # Uncomment and set if using basic auth
+
+# GOWA Server Flags (when running binary):
+# --port=3030                                    (Server port)
+# --webhook="http://localhost:3000/api/webhook"  (Webhook URL to Next.js)
+# --webhook-events="message"                     (Events to forward)
+# --debug=true                                   (Enable debug mode)
