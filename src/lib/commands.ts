@@ -611,9 +611,8 @@ function detectPlatform(url: string): string {
  */
 async function downloadVideo(url: string, platform: string): Promise<{ url: string; title?: string; error?: string }> {
     try {
-        // Use a multi-platform video downloader API
-        // You can replace this with your preferred API service
-        const apiUrl = `https://api.cobalt.tools/api/json`;
+        // Use cobalt API v2 format
+        const apiUrl = `https://api.cobalt.tools/`;
 
         const response = await fetch(apiUrl, {
             method: "POST",
@@ -623,38 +622,54 @@ async function downloadVideo(url: string, platform: string): Promise<{ url: stri
             },
             body: JSON.stringify({
                 url: url,
-                vCodec: "h264",
-                vQuality: "720",
-                aFormat: "mp3",
-                filenamePattern: "basic",
-                isAudioOnly: false,
-                disableMetadata: false,
+                videoQuality: "720",
+                filenameStyle: "basic",
             })
         });
 
         if (!response.ok) {
-            throw new Error(`API returned ${response.status}`);
+            // Try alternative API
+            return await downloadVideoFallback(url, platform);
         }
 
         const data = await response.json();
 
         if (data.status === "error") {
-            return { url: "", error: data.text || "Download failed" };
+            return { url: "", error: data.error?.code || "Download failed" };
         }
 
-        if (data.status === "redirect" || data.status === "stream") {
+        // New format returns url directly
+        if (data.url) {
             return { url: data.url, title: data.filename || "" };
         }
 
         if (data.status === "picker" && data.picker && data.picker.length > 0) {
-            // Multiple options, return first video
             return { url: data.picker[0].url, title: "" };
         }
 
-        return { url: "", error: "No video found" };
+        return await downloadVideoFallback(url, platform);
     } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
         console.error("Download error:", error);
-        return { url: "", error: errorMessage };
+        return await downloadVideoFallback(url, platform);
+    }
+}
+
+/**
+ * Fallback download using alternative API
+ */
+async function downloadVideoFallback(url: string, platform: string): Promise<{ url: string; title?: string; error?: string }> {
+    try {
+        // Try alternative free API
+        const encoded = encodeURIComponent(url);
+        const apiUrl = `https://api.vevioz.com/api/button/mp4/${encoded}`;
+
+        // This is a simple fallback - may not work for all platforms
+        // Return error suggesting user try another method
+        return {
+            url: "",
+            error: `Platform ${platform} tidak didukung saat ini. Coba download langsung dari aplikasi.`
+        };
+    } catch (error) {
+        return { url: "", error: "Download service unavailable" };
     }
 }

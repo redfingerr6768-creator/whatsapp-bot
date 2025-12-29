@@ -150,14 +150,44 @@ export async function POST(req: NextRequest) {
         if (isCommand(messageText)) {
             console.log(`[WEBHOOK] Processing command: ${messageText}`);
 
-            // Build message payload (simplified - no media for now in real GOWA format)
+            // Extract media info from payload (both formats)
+            let mediaUrl = "";
+            let mimetype = "";
+            let hasMedia = false;
+
+            // Old format (body.payload)
+            if (body.payload) {
+                const mediaInfo = extractMediaInfo(body.payload);
+                mediaUrl = mediaInfo.mediaUrl || "";
+                mimetype = mediaInfo.mimetype || "";
+                hasMedia = mediaInfo.hasMedia;
+            }
+
+            // New format (body.message)
+            if (body.message) {
+                if (body.message.image) {
+                    mediaUrl = typeof body.message.image === "string" ? body.message.image : body.message.image.url;
+                    mimetype = "image/jpeg";
+                    hasMedia = true;
+                } else if (body.message.video) {
+                    mediaUrl = typeof body.message.video === "string" ? body.message.video : body.message.video.url;
+                    mimetype = "video/mp4";
+                    hasMedia = true;
+                } else if (body.message.document) {
+                    mediaUrl = typeof body.message.document === "string" ? body.message.document : body.message.document.url;
+                    mimetype = "application/octet-stream";
+                    hasMedia = true;
+                }
+            }
+
+            // Build message payload with media
             const msgPayload = {
                 id: body.message?.id || body.payload?.id || "",
                 from: chatId,
                 body: messageText,
-                hasMedia: false,
-                mediaUrl: "",
-                mimetype: "",
+                hasMedia,
+                mediaUrl,
+                mimetype,
                 quotedMsg: body.message?.replied_id ? {
                     hasMedia: false,
                     mediaUrl: "",
@@ -165,6 +195,8 @@ export async function POST(req: NextRequest) {
                     body: body.message?.quoted_message || "",
                 } : undefined
             };
+
+            console.log(`[WEBHOOK] Payload media: hasMedia=${hasMedia}, url=${mediaUrl?.substring(0, 50)}...`);
 
             const result = await handleCommand(msgPayload);
 
