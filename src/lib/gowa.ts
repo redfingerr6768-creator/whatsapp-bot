@@ -330,7 +330,7 @@ export class GowaClient {
         // Use dedicated /send/sticker endpoint - GOWA auto-converts to WebP 512x512
         const formData = this.createFormData({
             phone,
-            image_url: imageUrl,
+            sticker_url: imageUrl,  // Parameter name is sticker_url, not image_url
         });
 
         return this.request(
