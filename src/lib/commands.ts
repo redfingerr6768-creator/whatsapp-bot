@@ -10,6 +10,7 @@ import { getGroupTemplates } from "./groupTemplates";
 import { createSticker, cleanupOldStickers } from "./sticker";
 import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
 import { getRandomDelay, setDelay, getBroadcastConfig } from "./broadcastConfig";
+import { convertImageForBroadcast, cleanupOldBroadcastMedia } from "./broadcastMedia";
 
 const GOWA_URL = process.env.GOWA_URL || "http://localhost:3030";
 const GOWA_BASIC_AUTH = process.env.GOWA_BASIC_AUTH;
@@ -476,6 +477,22 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         broadcastInProgress = true;
         cancelBroadcast = false;
 
+        // Prepare media if needed
+        let finalMediaUrl = mediaUrl;
+
+        if (hasMedia && mimetype.startsWith("image/")) {
+            try {
+                await client.sendText(adminChatId, "⏳ Memproses gambar untuk broadcast...");
+                const converted = await convertImageForBroadcast(mediaUrl!);
+                finalMediaUrl = `http://localhost:3000${converted.localUrl}`;
+                cleanupOldBroadcastMedia(); // Async cleanup
+                console.log(`[BROADCAST] Image converted to: ${finalMediaUrl}`);
+            } catch (error: any) {
+                console.error(`[BROADCAST] Image conversion failed: ${error.message}`);
+                await client.sendText(adminChatId, `⚠️ Gagal konversi gambar: ${error.message}\nMencoba kirim URL asli...`);
+            }
+        }
+
         // Send broadcast notification
         const mediaInfo = hasMedia ? `\n📎 Media: ${mimetype.split("/")[0]}` : "";
         await client.sendText(adminChatId, `📡 *Mulai broadcast...*\n\nTemplate: ${template.name}\nGrup: ${totalGroups}${mediaInfo}\nPesan: ${message}\n\n_Ketik /cancel untuk membatalkan_`);
@@ -496,13 +513,13 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
             try {
                 if (hasMedia) {
                     // Send media with caption
-                    console.log(`[BROADCAST] Sending media to ${groupId}: ${mediaUrl?.substring(0, 50)}...`);
+                    console.log(`[BROADCAST] Sending media to ${groupId}: ${finalMediaUrl?.substring(0, 50)}...`);
                     if (mimetype.startsWith("image/")) {
-                        await client.sendImage(groupId, mediaUrl!, message);
+                        await client.sendImage(groupId, finalMediaUrl!, message);
                     } else if (mimetype.startsWith("video/")) {
-                        await client.sendVideo(groupId, mediaUrl!, message);
+                        await client.sendVideo(groupId, finalMediaUrl!, message);
                     } else {
-                        await client.sendFile(groupId, mediaUrl!);
+                        await client.sendFile(groupId, finalMediaUrl!);
                         if (message) await client.sendText(groupId, message);
                     }
                 } else {
