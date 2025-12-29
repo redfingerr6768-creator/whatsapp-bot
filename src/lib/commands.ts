@@ -39,6 +39,7 @@ const COMMANDS = {
     HELP: ["/help", "/menu", ".help", ".menu"],
     // Admin commands
     ADMIN_BROADCAST: ["/broadcast", "/bc"],
+    ADMIN_CANCEL: ["/cancel", "/stop"],
     ADMIN_STATUS: ["/status", "/stat"],
     ADMIN_TEMPLATES: ["/templates", "/tpl"],
     ADMIN_GROUPS: ["/groups", "/grp"],
@@ -50,6 +51,10 @@ const COMMANDS = {
     // AI Query (available to everyone)
     AI_QUERY: ["/ai"],
 };
+
+// Broadcast state for cancellation
+let broadcastInProgress = false;
+let cancelBroadcast = false;
 
 /**
  * Check if message is a command
@@ -119,6 +124,7 @@ _Contoh: /ai apa itu blockchain?_
 📊 /status ➜ Status lengkap bot
 📁 /templates ➜ Lihat template grup
 📢 /broadcast [tpl], [msg] ➜ Broadcast
+🛑 /cancel ➜ Batalkan broadcast
 👥 /groups ➜ List semua grup
 📇 /contacts ➜ Info kontak
 ✉️ /send [no], [msg] ➜ Kirim ke nomor
@@ -213,8 +219,20 @@ _Contoh: /ai apa itu blockchain?_
             `${i + 1}. *${t.name}* (${t.groupIds.length} grup)`
         ).join("\n");
 
-        await client.sendText(chatId, `📁 *Daftar Template*\n\n${templateList}\n\nGunakan: /broadcast <nama_template> <pesan>`);
+        await client.sendText(chatId, `📁 *Daftar Template*\n\n${templateList}\n\nGunakan: /broadcast <nama_template>, <pesan>\n_Kirim dengan media untuk broadcast gambar/video!_`);
         return { handled: true, response: "templates listed" };
+    }
+
+    // Admin: Cancel broadcast
+    if (COMMANDS.ADMIN_CANCEL.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+        if (!broadcastInProgress) {
+            await client.sendText(chatId, "❌ Tidak ada broadcast yang sedang berjalan.");
+            return { handled: true, response: "no broadcast" };
+        }
+        cancelBroadcast = true;
+        await client.sendText(chatId, "🛑 Menghentikan broadcast...");
+        return { handled: true, response: "cancelling" };
     }
 
     // Admin: Broadcast command
@@ -222,7 +240,7 @@ _Contoh: /ai apa itu blockchain?_
         if (!senderIsAdmin) {
             return { handled: false };
         }
-        return await handleAdminBroadcast(client, chatId, args);
+        return await handleAdminBroadcast(client, chatId, args, payload);
     }
 
     // Admin: List groups command
@@ -366,18 +384,30 @@ ${aiResponse}
 /**
  * Handle admin broadcast command
  * Usage: /broadcast <template_name>, <message>
+ * Supports media: send image/video with caption /broadcast template, message
  */
-async function handleAdminBroadcast(client: GowaClient, adminChatId: string, args: string): Promise<CommandResult> {
+async function handleAdminBroadcast(client: GowaClient, adminChatId: string, args: string, payload: MessagePayload): Promise<CommandResult> {
     try {
+        // Check if already broadcasting
+        if (broadcastInProgress) {
+            await client.sendText(adminChatId, "⚠️ Broadcast sedang berjalan!\n\nGunakan /cancel untuk membatalkan.");
+            return { handled: true, error: "broadcast in progress" };
+        }
+
         // Parse template name and message (comma separated)
         const parts = args.split(",").map(a => a.trim());
         if (parts.length < 2 || !parts[0] || !parts[1]) {
-            await client.sendText(adminChatId, `❌ Format salah.\n\nGunakan: /broadcast <nama_template>, <pesan>\nContoh: /broadcast marketing, Promo hari ini!`);
+            await client.sendText(adminChatId, `❌ Format salah.\n\nGunakan: /broadcast <nama_template>, <pesan>\nContoh: /broadcast marketing, Promo hari ini!\n\n_Kirim dengan gambar/video untuk broadcast media!_`);
             return { handled: true, error: "invalid format" };
         }
 
         const templateName = parts[0];
         const message = parts.slice(1).join(", ");
+
+        // Check for media attachment
+        const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
+        const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+        const hasMedia = !!mediaUrl;
 
         // Find template
         const templates = getGroupTemplates();
@@ -392,27 +422,69 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
             return { handled: true, error: "template not found" };
         }
 
-        // Send broadcast notification
-        await client.sendText(adminChatId, `📡 Mulai broadcast ke ${template.groupIds.length} grup...\n\nTemplate: ${template.name}\nPesan: ${message}`);
+        // Deduplicate group IDs
+        const uniqueGroupIds = [...new Set(template.groupIds)];
+        const totalGroups = uniqueGroupIds.length;
 
-        // Send to all groups in template
+        // Set broadcast state
+        broadcastInProgress = true;
+        cancelBroadcast = false;
+
+        // Send broadcast notification
+        const mediaInfo = hasMedia ? `\n📎 Media: ${mimetype.split("/")[0]}` : "";
+        await client.sendText(adminChatId, `📡 *Mulai broadcast...*\n\nTemplate: ${template.name}\nGrup: ${totalGroups}${mediaInfo}\nPesan: ${message}\n\n_Ketik /cancel untuk membatalkan_`);
+
+        // Send to all groups
         let successCount = 0;
         let failCount = 0;
+        let cancelledAt = 0;
 
-        for (const groupId of template.groupIds) {
+        for (let i = 0; i < uniqueGroupIds.length; i++) {
+            // Check for cancellation
+            if (cancelBroadcast) {
+                cancelledAt = i;
+                break;
+            }
+
+            const groupId = uniqueGroupIds[i];
             try {
-                await client.sendText(groupId, message);
+                if (hasMedia) {
+                    // Send media with caption
+                    if (mimetype.startsWith("image/")) {
+                        await client.sendImage(groupId, mediaUrl!, message);
+                    } else if (mimetype.startsWith("video/")) {
+                        await client.sendVideo(groupId, mediaUrl!, message);
+                    } else {
+                        await client.sendFile(groupId, mediaUrl!);
+                        if (message) await client.sendText(groupId, message);
+                    }
+                } else {
+                    await client.sendText(groupId, message);
+                }
                 successCount++;
-                // Anti-ban delay
-                await new Promise(r => setTimeout(r, 1500));
             } catch (e) {
                 failCount++;
             }
+
+            // Random delay 2-5 seconds (anti-ban)
+            const delay = Math.floor(Math.random() * 3000) + 2000;
+            await new Promise(r => setTimeout(r, delay));
         }
 
-        await client.sendText(adminChatId, `✅ Broadcast selesai!\n\n✓ Berhasil: ${successCount}\n✗ Gagal: ${failCount}`);
+        // Reset broadcast state
+        broadcastInProgress = false;
+
+        // Send result
+        if (cancelBroadcast) {
+            cancelBroadcast = false;
+            await client.sendText(adminChatId, `🛑 *Broadcast dibatalkan!*\n\n✓ Terkirim: ${successCount}\n✗ Gagal: ${failCount}\n⏸️ Dibatalkan pada: ${cancelledAt}/${totalGroups}`);
+            return { handled: true, response: "broadcast cancelled" };
+        }
+
+        await client.sendText(adminChatId, `✅ *Broadcast selesai!*\n\n✓ Berhasil: ${successCount}\n✗ Gagal: ${failCount}\n📊 Total: ${totalGroups} grup`);
         return { handled: true, response: `broadcast sent to ${successCount} groups` };
     } catch (error: any) {
+        broadcastInProgress = false;
         await client.sendText(adminChatId, `❌ Error: ${error.message}`);
         return { handled: true, error: error.message };
     }
