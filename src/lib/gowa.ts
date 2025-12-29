@@ -438,7 +438,7 @@ export class GowaClient {
 
     async getChatMessages(chatId: string, limit: number = 50): Promise<unknown[]> {
         const res = await this.request(
-            `/chat/messages?chat_id=${encodeURIComponent(chatId)}&limit=${limit}`,
+            `/chat/${encodeURIComponent(chatId)}/messages?limit=${limit}`,
             { method: "GET" }
         );
         return (res as GowaResponse<unknown[]>).results || [];
