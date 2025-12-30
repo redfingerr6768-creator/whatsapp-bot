@@ -81,8 +81,6 @@ export async function generateAIResponse(userMessage: string, conversationHistor
         throw new Error("No API keys configured");
     }
 
-    const apiKey = rotateApiKey();
-
     // Build messages array
     const messages: ChatMessage[] = [
         { role: "system", content: groqConfig.systemPrompt },
@@ -90,37 +88,62 @@ export async function generateAIResponse(userMessage: string, conversationHistor
         { role: "user", content: userMessage }
     ];
 
-    try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: groqConfig.model,
-                messages: messages,
-                temperature: 0.7,
-                max_tokens: 500
-            })
-        });
+    // Try all API keys before giving up
+    const maxRetries = groqConfig.apiKeys.length;
+    let lastError: Error | null = null;
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Groq API Error (${response.status}):`, errorText);
-            throw new Error(`Groq API Error: ${response.status}`);
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        const apiKey = rotateApiKey();
+
+        try {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: groqConfig.model,
+                    messages: messages,
+                    temperature: 0.7,
+                    max_tokens: 500
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`Groq API Error (${response.status}) with key ${attempt + 1}:`, errorText);
+
+                // On 401 (Unauthorized) or 429 (Rate Limited), try next key
+                if (response.status === 401 || response.status === 429) {
+                    console.log(`Key ${attempt + 1} failed with ${response.status}, trying next key...`);
+                    lastError = new Error(`Groq API Error: ${response.status}`);
+                    continue; // Try next key
+                }
+
+                throw new Error(`Groq API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const aiMessage = data.choices?.[0]?.message?.content;
+
+            if (!aiMessage) {
+                throw new Error("No response from AI");
+            }
+
+            return aiMessage.trim();
+        } catch (error) {
+            console.error(`Groq API request failed (attempt ${attempt + 1}):`, error);
+            lastError = error instanceof Error ? error : new Error("Unknown error");
+
+            // Continue to next key on network errors
+            if (attempt < maxRetries - 1) {
+                console.log(`Retrying with next API key...`);
+                continue;
+            }
         }
-
-        const data = await response.json();
-        const aiMessage = data.choices?.[0]?.message?.content;
-
-        if (!aiMessage) {
-            throw new Error("No response from AI");
-        }
-
-        return aiMessage.trim();
-    } catch (error) {
-        console.error("Groq API request failed:", error);
-        throw error;
     }
+
+    // All keys failed
+    throw lastError || new Error("All Groq API keys failed");
 }

@@ -179,6 +179,48 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: "duplicate", messageId });
         }
 
+        // === ADMIN NOTIFICATION ===
+        // Send notification to all admins when non-admin sends a message (private chat only)
+        try {
+            const { isAdmin, getAdminNumbers } = await import("@/lib/adminConfig");
+            const senderPhone = body.from?.split("@")[0] || chatId.split("@")[0] || "";
+            const isFromAdmin = isAdmin(senderPhone);
+            const isGroupChat = chatId.includes("@g.us") || body.from?.includes(" in ");
+
+            // Only notify for private chats from non-admins
+            if (!isFromAdmin && !isGroupChat && messageText) {
+                const adminNumbers = getAdminNumbers();
+                const client = getGowaClient(GOWA_URL, GOWA_BASIC_AUTH);
+                const senderName = body.pushname || senderPhone;
+                const timestamp = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+
+                const notifMessage = `╭───  📩 *PESAN MASUK*  ───╮
+│
+│  👤 *Dari:* ${senderName}
+│  📞 *Nomor:* ${senderPhone}
+│  ⏰ *Waktu:* ${timestamp}
+│
+│  💬 *Pesan:*
+│  _${messageText.length > 100 ? messageText.substring(0, 100) + "..." : messageText}_
+│
+╰─────────────────────╯
+
+_Reply langsung ke ${senderPhone} untuk membalas_`;
+
+                // Send to all admins (async, don't wait)
+                for (const adminNum of adminNumbers) {
+                    client.sendText(adminNum, notifMessage).catch(err => {
+                        console.error(`[WEBHOOK] Failed to notify admin ${adminNum}:`, err.message);
+                    });
+                }
+                console.log(`[WEBHOOK] Notified ${adminNumbers.length} admins about message from ${senderPhone}`);
+            }
+        } catch (notifError) {
+            console.error("[WEBHOOK] Admin notification error:", notifError);
+            // Don't block message processing if notification fails
+        }
+
+
         // Check for bot commands first
         const { isCommand, handleCommand } = await import("@/lib/commands");
 

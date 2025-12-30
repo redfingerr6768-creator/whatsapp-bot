@@ -379,6 +379,86 @@ ${groups.length > 15 ? `│  _... dan ${groups.length - 15} lainnya_` : ""}
         }
     }
 
+    // Admin: Broadcast command
+    if (COMMANDS.ADMIN_BROADCAST.includes(command)) {
+        if (!senderIsAdmin) {
+            await client.sendText(chatId, "❌ *Admin Only*\n\n_Command ini hanya untuk admin._");
+            return { handled: true, error: "not admin" };
+        }
+        return await handleAdminBroadcast(client, chatId, args, payload);
+    }
+
+    // Admin: Cancel broadcast
+    if (COMMANDS.ADMIN_CANCEL.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+        if (broadcastInProgress) {
+            cancelBroadcast = true;
+            await client.sendText(chatId, "🛑 *Membatalkan broadcast...*\n\n_Menunggu proses saat ini selesai..._");
+            return { handled: true, response: "cancel requested" };
+        } else {
+            await client.sendText(chatId, "⚠️ *Tidak ada broadcast yang berjalan*");
+            return { handled: true, error: "no broadcast" };
+        }
+    }
+
+    // Admin: Set delay - /setdelay min max (in seconds)
+    // Example: /setdelay 3 5 = random delay between 3000ms-5000ms
+    if (COMMANDS.ADMIN_SETDELAY.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const parts = args.trim().split(/\s+/).map(p => parseFloat(p));
+
+        // Validate input
+        if (parts.length < 1 || parts.length > 2 || parts.some(isNaN)) {
+            const config = getBroadcastConfig();
+            const currentMin = (config.minDelay / 1000).toFixed(1);
+            const currentMax = (config.maxDelay / 1000).toFixed(1);
+
+            await client.sendText(chatId, `╭───  ⏱️ *SET DELAY*  ───╮
+│
+│  📌 *Format:*
+│  /setdelay <min> <max>
+│
+│  📋 *Contoh:*
+│  /setdelay 3 5
+│  _(delay random 3-5 detik)_
+│
+│  ⚙️ *Delay Saat Ini:*
+│  _${currentMin}s - ${currentMax}s_
+│
+╰────────────────────╯`);
+            return { handled: true, error: "invalid format" };
+        }
+
+        let minSec = parts[0];
+        let maxSec = parts.length === 2 ? parts[1] : minSec + 2; // Default: min + 2 seconds
+
+        // Ensure min < max
+        if (minSec > maxSec) {
+            [minSec, maxSec] = [maxSec, minSec];
+        }
+
+        // Validate range (0.5s to 60s)
+        if (minSec < 0.5 || maxSec > 60) {
+            await client.sendText(chatId, "❌ *Range Tidak Valid*\n\n_Delay harus antara 0.5 - 60 detik_");
+            return { handled: true, error: "invalid range" };
+        }
+
+        setDelay(minSec, maxSec);
+
+        await client.sendText(chatId, `╭───  ✅ *DELAY DIATUR*  ───╮
+│
+│  ⏱️ *Broadcast Delay:*
+│  _Random ${minSec}s - ${maxSec}s_
+│
+│  💡 *Info:*
+│  _Setiap pesan ke grup akan
+│  dijeda random sesuai setting_
+│
+╰─────────────────────╯`);
+        return { handled: true, response: `delay set to ${minSec}s-${maxSec}s` };
+    }
+
     return { handled: false };
 }
 
@@ -495,18 +575,48 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
             }
         }
 
-        // Send broadcast notification
+        // Progress notification settings
+        const PROGRESS_INTERVAL = 1; // Update every 1 group (TESTING)
+        let progressMessageId: string | undefined;
+        const startTime = Date.now();
+
+        // Helper to generate progress bar
+        const generateProgressBar = (current: number, total: number, success: number, fail: number) => {
+            const percent = Math.floor((current / total) * 100);
+            const filled = Math.floor(percent / 10);
+            const empty = 10 - filled;
+            const bar = "▓".repeat(filled) + "░".repeat(empty);
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const eta = current > 0 ? Math.floor((elapsed / current) * (total - current)) : 0;
+
+            return `╭━━━  📡 *BROADCAST PROGRESS*  ━━━╮
+│
+│  📊 *Progress:* ${current}/${total} grup
+│  ${bar} ${percent}%
+│
+│  ✅ Berhasil: ${success}
+│  ❌ Gagal: ${fail}
+│  ⏱️ Waktu: ${elapsed}s | ETA: ${eta}s
+│
+│  🎯 Target: ${template.name}
+│
+╰──  _Ketik /cancel untuk stop_  ──╯`;
+        };
+
+        // Send initial progress message
         const mediaInfo = hasMedia ? `\n📎 Media: ${mimetype.split("/")[0]}` : "";
-        await client.sendText(adminChatId, `╭━━━  *BROADCAST START*  ━━━╮
+        const initialRes = await client.sendText(adminChatId, `╭━━━  *BROADCAST START*  ━━━╮
 │
 │  📡 *Target:* ${template.name}
 │  👥 *Jumlah:* ${totalGroups} Grup${mediaInfo}
 │  📝 *Pesan:*
 │  _${message.length > 50 ? message.substring(0, 50) + "..." : message}_
 │
-╰──  _Ketik /cancel untuk stop_  ──╯`);
+╰──  _Mengirim... 0/${totalGroups}_  ──╯`);
 
-        // Send to all groups
+        progressMessageId = initialRes.messageId;
+
+        // Send to all groups with progress updates
         let successCount = 0;
         let failCount = 0;
         let cancelledAt = 0;
@@ -540,6 +650,22 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
                 failCount++;
             }
 
+            // Update progress every PROGRESS_INTERVAL groups via edit message
+            const current = i + 1;
+            if (current % PROGRESS_INTERVAL === 0 || current === totalGroups) {
+                const progressMsg = generateProgressBar(current, totalGroups, successCount, failCount);
+
+                // Edit the existing progress message
+                if (progressMessageId) {
+                    try {
+                        await client.editMessage(adminChatId, progressMessageId, progressMsg);
+                    } catch (editError) {
+                        // Edit failed, log and continue (don't spam with new messages)
+                        console.log(`[BROADCAST] Edit progress failed: ${editError}`);
+                    }
+                }
+            }
+
             // Delay from config (anti-ban)
             const delay = getRandomDelay();
             await new Promise(r => setTimeout(r, delay));
@@ -548,28 +674,36 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         // Reset broadcast state
         broadcastInProgress = false;
 
-        // Send result
+        const totalTime = Math.floor((Date.now() - startTime) / 1000);
+
+        // No need to delete - just send final result (progress message stays as history)
+
+        // Send final result
         if (cancelBroadcast) {
             cancelBroadcast = false;
-            await client.sendText(adminChatId, `╭━━━  *BROADCAST STOPPED*  ━━━╮
+            await client.sendText(adminChatId, `╭━━━  🛑 *BROADCAST STOPPED*  ━━━╮
 │
-│  🛑 *Dibatalkan oleh Admin*
-│  ✓ Terkirim: ${successCount}
-│  ✗ Gagal: ${failCount}
+│  ⏹️ *Dibatalkan oleh Admin*
+│
+│  ✅ Terkirim: ${successCount}
+│  ❌ Gagal: ${failCount}
 │  ⏸️ Posisi: ${cancelledAt}/${totalGroups}
+│  ⏱️ Waktu: ${totalTime}s
 │
 ╰━━━━━━━━━━━━━━━━━━━━╯`);
             return { handled: true, response: "broadcast cancelled" };
         }
 
-        await client.sendText(adminChatId, `╭━━━  *BROADCAST DONE*  ━━━╮
+        await client.sendText(adminChatId, `╭━━━  ✅ *BROADCAST SELESAI*  ━━━╮
 │
-│  ✅ *Selesai!*
-│  ✓ Berhasil: ${successCount}
-│  ✗ Gagal: ${failCount}
-│  📊 Total Target: ${totalGroups}
+│  🎉 *Sukses!*
 │
-╰━━━━━━━━━━━━━━━━━━━╯`);
+│  ✅ Berhasil: ${successCount}
+│  ❌ Gagal: ${failCount}
+│  📊 Total: ${totalGroups} grup
+│  ⏱️ Waktu: ${totalTime}s
+│
+╰━━━━━━━━━━━━━━━━━━━━╯`);
         return { handled: true, response: `broadcast sent to ${successCount} groups` };
     } catch (error: any) {
         broadcastInProgress = false;
@@ -577,6 +711,7 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         return { handled: true, error: error.message };
     }
 }
+
 /**
  * Handle sticker creation from image - FAST VERSION
  * Downloads → Converts to WebP 512x512 → Sends sticker

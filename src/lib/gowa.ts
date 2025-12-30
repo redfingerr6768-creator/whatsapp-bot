@@ -245,7 +245,7 @@ export class GowaClient {
     }
 
     // ==================== MESSAGING ====================
-    async sendText(phone: string, message: string, mentions?: string[]): Promise<GowaResponse> {
+    async sendText(phone: string, message: string, mentions?: string[]): Promise<GowaResponse & { messageId?: string }> {
         // NOTE: GOWA API does not seem to support 'mentions' field in FormData (returns 405).
         // Mentions must be embedded in the message text (e.g. @628xxx).
         const formData = this.createFormData({
@@ -253,12 +253,44 @@ export class GowaClient {
             message,
         });
 
-        return this.request(
+        const res = await this.request(
             "/send/message",
+            { method: "POST", body: formData },
+            true
+        ) as GowaResponse<{ message_id?: string, id?: string }>;
+
+        // Extract message ID from response for later editing
+        const messageId = res.results?.message_id || res.results?.id;
+        return { ...res, messageId };
+    }
+
+    async editMessage(chatId: string, messageId: string, newMessage: string): Promise<GowaResponse> {
+        // GOWA endpoint: POST /message/:message_id/update
+        const formData = this.createFormData({
+            phone: chatId,
+            message: newMessage,
+        });
+
+        return this.request(
+            `/message/${encodeURIComponent(messageId)}/update`,
             { method: "POST", body: formData },
             true
         ) as Promise<GowaResponse>;
     }
+
+    async deleteMessage(chatId: string, messageId: string): Promise<GowaResponse> {
+        const formData = this.createFormData({
+            chat_id: chatId,
+            message_id: messageId,
+        });
+
+        return this.request(
+            "/message/delete",
+            { method: "DELETE", body: formData },
+            true
+        ) as Promise<GowaResponse>;
+    }
+
 
     async sendImage(
         phone: string,

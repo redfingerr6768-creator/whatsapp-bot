@@ -108,3 +108,8 @@ export function setAdminEnabled(enabled: boolean): void {
     config!.enabled = enabled;
     saveConfig();
 }
+
+export function getAdminNumbers(): string[] {
+    ensureInitialized();
+    return [...config!.adminNumbers];
+}
