@@ -6,6 +6,7 @@
 import { GowaClient, getGowaClient } from "./gowa";
 import { isAdmin } from "./adminConfig";
 import { getGroupTemplates } from "./groupTemplates";
+import { getBroadcastTemplates, addBroadcastTemplate, deleteBroadcastTemplate, getBroadcastTemplateByName } from "./broadcastTemplates";
 // Pre-import for speed (avoid dynamic import delay)
 import { createSticker, cleanupOldStickers } from "./sticker";
 import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
@@ -57,6 +58,8 @@ const COMMANDS = {
     ADMIN_AI_TOGGLE: ["/aitoggle", "/aiswitch"],
     ADMIN_PING: ["/ping"],
     ADMIN_SETDELAY: ["/setdelay", "/delay"],
+    ADMIN_SAVEBC: ["/svbc", "/simpanbc"],
+    ADMIN_LOADBC: ["/listbc", "/daftarbc"],
     // AI Query (available to everyone)
     AI_QUERY: ["/ai"],
     // Useful tools
@@ -130,8 +133,10 @@ export async function handleCommand(payload: MessagePayload): Promise<CommandRes
             helpText += `
 
 ╭━━━  *ADMIN PANEL*  ━━━╮
-📢 */broadcast* [tpl], [pesan]
-💾 */templates* » List Template
+📢 */bc* [nama] » Kirim Broadcast
+📝 */svbc* » Simpan Template BC
+📋 */listbc* » List Template BC
+💾 */templates* » List Group Template
 👥 */groups* » List Semua Grup
 🛑 */cancel* » Stop Broadcast
 ⚙️ */setdelay* » Atur Jeda
@@ -459,6 +464,141 @@ ${groups.length > 15 ? `│  _... dan ${groups.length - 15} lainnya_` : ""}
         return { handled: true, response: `delay set to ${minSec}s-${maxSec}s` };
     }
 
+    // Admin: Save broadcast template - /svbc <nama>, <group_template>, <pesan>
+    if (COMMANDS.ADMIN_SAVEBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const parts = args.split(",").map(a => a.trim());
+        if (parts.length < 3 || !parts[0] || !parts[1] || !parts[2]) {
+            await client.sendText(chatId, `╭───  📝 *SIMPAN BROADCAST*  ───╮
+│
+│  📌 *Format:*
+│  /svbc <nama>, <group_tpl>, <pesan>
+│
+│  📋 *Contoh:*
+│  /svbc promo, marketing, Halo! Promo
+│
+│  💡 *Tips:*
+│  _Kirim dengan gambar/video_
+│  _untuk simpan template media_
+│
+│  📂 *Lihat Group Template:*
+│  _Ketik /templates_
+│
+╰────────────────────────────╯`);
+            return { handled: true, error: "invalid format" };
+        }
+
+        const templateName = parts[0];
+        const groupTemplateName = parts[1];
+        const message = parts.slice(2).join(", ");
+
+        // Check if group template exists
+        const groupTemplates = getGroupTemplates();
+        const groupTemplate = groupTemplates.find(t =>
+            t.name.toLowerCase() === groupTemplateName.toLowerCase() ||
+            t.name.toLowerCase().includes(groupTemplateName.toLowerCase())
+        );
+
+        if (!groupTemplate) {
+            const available = groupTemplates.map(t => t.name).join(", ") || "tidak ada";
+            await client.sendText(chatId, `❌ *Group Template Tidak Ditemukan*\n\nTemplate tersedia:\n${available}\n\n_Buat group template di Dashboard → Groups_`);
+            return { handled: true, error: "group template not found" };
+        }
+
+        // Check for media
+        const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
+        const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+        let mediaType: "text" | "image" | "video" | "file" = "text";
+
+        if (mediaUrl) {
+            if (mimetype.startsWith("image/")) mediaType = "image";
+            else if (mimetype.startsWith("video/")) mediaType = "video";
+            else mediaType = "file";
+        }
+
+        // Check if template with same name exists
+        const existing = getBroadcastTemplateByName(templateName);
+        if (existing) {
+            await client.sendText(chatId, `❌ *Template Sudah Ada*\n\n_Template "${templateName}" sudah tersimpan._\n_Hapus dulu dengan /listbc ${templateName}_`);
+            return { handled: true, error: "template exists" };
+        }
+
+        // Save template with group template reference
+        const newTemplate = addBroadcastTemplate(templateName, groupTemplate.name, message, mediaType, mediaUrl);
+
+        const mediaInfo = mediaType !== "text" ? `\n│  📎 *Media:* ${mediaType}` : "";
+        await client.sendText(chatId, `╭───  ✅ *TEMPLATE TERSIMPAN*  ───╮
+│
+│  📝 *Nama:* ${newTemplate.name}
+│  👥 *Target:* ${groupTemplate.name} (${groupTemplate.groupIds.length} grup)
+│  💬 *Pesan:* _${message.substring(0, 40)}${message.length > 40 ? "..." : ""}_${mediaInfo}
+│
+│  🚀 *Cara Pakai:*
+│  */bc ${templateName}*
+│
+╰─────────────────────────────╯`);
+        return { handled: true, response: "template saved" };
+    }
+
+    // Admin: Load/List broadcast message templates - /loadbc [nama_hapus]
+    if (COMMANDS.ADMIN_LOADBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const templates = getBroadcastTemplates();
+
+        // If args provided, try to delete that template
+        if (args) {
+            const templateToDelete = templates.find(t =>
+                t.name.toLowerCase() === args.toLowerCase() ||
+                t.id === args
+            );
+
+            if (templateToDelete) {
+                deleteBroadcastTemplate(templateToDelete.id);
+                await client.sendText(chatId, `✅ *Template Dihapus*\n\n_"${templateToDelete.name}" berhasil dihapus._`);
+                return { handled: true, response: "template deleted" };
+            } else {
+                await client.sendText(chatId, `❌ *Template Tidak Ditemukan*\n\n_"${args}" tidak ada dalam daftar._`);
+                return { handled: true, error: "template not found" };
+            }
+        }
+
+        // List all templates
+        if (templates.length === 0) {
+            await client.sendText(chatId, `╭───  📋 *BROADCAST TEMPLATES*  ───╮
+│
+│  📭 *Belum Ada Template*
+│
+│  _Simpan template baru dengan:_
+│  */savebc <nama>, <pesan>*
+│
+╰──────────────────────────╯`);
+            return { handled: true, response: "no templates" };
+        }
+
+        const templateList = templates.map((t, i) => {
+            const mediaIcon = t.mediaType === "image" ? "🖼️" : t.mediaType === "video" ? "🎬" : t.mediaType === "file" ? "📎" : "📝";
+            return `│ ${i + 1}. ${mediaIcon} *${t.name}* → ${t.groupTemplateName}\n│    _${t.message.substring(0, 25)}${t.message.length > 25 ? "..." : ""}_`;
+        }).join("\n");
+
+        await client.sendText(chatId, `╭───  📋 *BROADCAST TEMPLATES*  ───╮
+│
+${templateList}
+│
+│  🚀 *Kirim Broadcast:*
+│  /bc <nama>
+│
+│  🗑️ *Hapus Template:*
+│  /listbc <nama>
+│
+│  📝 *Tambah Template:*
+│  /svbc <nama>, <group>, <pesan>
+│
+╰──────────────────────────────╯`);
+        return { handled: true, response: "templates listed" };
+    }
+
     return { handled: false };
 }
 
@@ -506,8 +646,8 @@ ${aiResponse}
 
 /**
  * Handle admin broadcast command
- * Usage: /broadcast <template_name>, <message>
- * Supports media: send image/video with caption /broadcast template, message
+ * Usage: /bc <saved_template_name> OR /broadcast <group_template>, <message>
+ * Supports media: send image/video with caption
  */
 async function handleAdminBroadcast(client: GowaClient, adminChatId: string, args: string, payload: MessagePayload): Promise<CommandResult> {
     try {
@@ -517,22 +657,61 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
             return { handled: true, error: "broadcast in progress" };
         }
 
-        // Parse template name and message (comma separated)
-        const parts = args.split(",").map(a => a.trim());
-        if (parts.length < 2 || !parts[0] || !parts[1]) {
-            await client.sendText(adminChatId, `❌ *Format Salah*\n\nGunakan:\n*/broadcast <template>, <pesan>*\n\n_Contoh: /broadcast marketing, Promo gila!_`);
-            return { handled: true, error: "invalid format" };
+        // FIRST: Check if args is a saved broadcast template name (one-command broadcast)
+        const savedTemplate = getBroadcastTemplateByName(args.trim());
+
+        let templateName: string;
+        let message: string;
+        let mediaUrl: string | undefined;
+        let mimetype: string;
+        let hasMedia: boolean;
+
+        if (savedTemplate) {
+            // Use saved broadcast template
+            templateName = savedTemplate.groupTemplateName;
+            message = savedTemplate.message;
+            mediaUrl = savedTemplate.mediaUrl;
+            mimetype = savedTemplate.mediaType === "image" ? "image/jpeg" :
+                savedTemplate.mediaType === "video" ? "video/mp4" :
+                    savedTemplate.mediaType === "file" ? "application/octet-stream" : "";
+            hasMedia = savedTemplate.mediaType !== "text" && !!savedTemplate.mediaUrl;
+
+            await client.sendText(adminChatId, `📡 *Menggunakan template:* ${savedTemplate.name}\n_Target: ${templateName}_`);
+        } else {
+            // Parse template name and message (comma separated) - legacy format
+            const parts = args.split(",").map(a => a.trim());
+            if (parts.length < 2 || !parts[0] || !parts[1]) {
+                // Show help with both formats
+                const savedTemplates = getBroadcastTemplates();
+                const savedList = savedTemplates.length > 0
+                    ? `\n\n📋 *Template Tersimpan:*\n${savedTemplates.map(t => `• ${t.name}`).join("\n")}`
+                    : "";
+                await client.sendText(adminChatId, `╭───  📢 *BROADCAST*  ───╮
+│
+│  📌 *Format Cepat:*
+│  /bc <nama_template>
+│
+│  📌 *Format Manual:*
+│  /bc <group_tpl>, <pesan>
+│${savedList}
+│
+│  💡 *Simpan Template:*
+│  /svbc <nama>, <group>, <pesan>
+│
+╰──────────────────────╯`);
+                return { handled: true, error: "invalid format" };
+            }
+
+            templateName = parts[0];
+            message = parts.slice(1).join(", ");
+
+            // Check for media attachment from message
+            mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
+            mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+            hasMedia = !!mediaUrl;
         }
 
-        const templateName = parts[0];
-        const message = parts.slice(1).join(", ");
-
-        // Check for media attachment
-        const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
-        const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
-        const hasMedia = !!mediaUrl;
-
-        // Find template
+        // Find group template
         const templates = getGroupTemplates();
         const template = templates.find(t =>
             t.name.toLowerCase() === templateName.toLowerCase() ||

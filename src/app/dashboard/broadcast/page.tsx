@@ -14,7 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Plus, Send, Users, Clock, CheckCircle, XCircle, RefreshCw, Save, FolderOpen, Trash2, Upload } from "lucide-react"
+import { Plus, Send, Users, Clock, CheckCircle, XCircle, RefreshCw, Save, FolderOpen, Trash2, Upload, FileText } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -43,6 +43,15 @@ interface GroupTemplate {
     createdAt: number;
 }
 
+interface MessageTemplate {
+    id: string;
+    name: string;
+    message: string;
+    mediaType: "text" | "image" | "video" | "file";
+    mediaUrl?: string;
+    createdAt: number;
+}
+
 // Helper to safely extract ID string from WAHA response
 const getIdString = (id: any): string => {
     if (!id) return "Unknown";
@@ -60,11 +69,17 @@ export default function BroadcastPage() {
     const [loadingGroups, setLoadingGroups] = useState(true)
     const [showNewDialog, setShowNewDialog] = useState(false)
 
-    // Templates
+    // Group Templates
     const [templates, setTemplates] = useState<GroupTemplate[]>([])
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
     const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
     const [newTemplateName, setNewTemplateName] = useState("")
+
+    // Message Templates
+    const [messageTemplates, setMessageTemplates] = useState<MessageTemplate[]>([])
+    const [selectedMessageTemplateId, setSelectedMessageTemplateId] = useState<string>("")
+    const [showSaveMessageTemplateDialog, setShowSaveMessageTemplateDialog] = useState(false)
+    const [newMessageTemplateName, setNewMessageTemplateName] = useState("")
 
     // New broadcast form
     const [targetType, setTargetType] = useState<"groups" | "numbers">("groups")
@@ -113,6 +128,7 @@ export default function BroadcastPage() {
     useEffect(() => {
         fetchGroups()
         fetchTemplates()
+        fetchMessageTemplates()
     }, [])
 
     const fetchGroups = async () => {
@@ -135,6 +151,63 @@ export default function BroadcastPage() {
             setTemplates(Array.isArray(data) ? data : [])
         } catch (e) {
             setTemplates([])
+        }
+    }
+
+    const fetchMessageTemplates = async () => {
+        try {
+            const res = await fetch("/api/broadcast-templates")
+            const data = await res.json()
+            setMessageTemplates(Array.isArray(data) ? data : [])
+        } catch (e) {
+            setMessageTemplates([])
+        }
+    }
+
+    const loadMessageTemplate = (templateId: string) => {
+        const template = messageTemplates.find(t => t.id === templateId)
+        if (template) {
+            setMessage(template.message)
+            setMediaType(template.mediaType)
+            setMediaUrl(template.mediaUrl || "")
+            setSelectedMessageTemplateId(templateId)
+        }
+    }
+
+    const saveAsMessageTemplate = async () => {
+        if (!newMessageTemplateName || !message) return
+        try {
+            await fetch("/api/broadcast-templates", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "create",
+                    name: newMessageTemplateName,
+                    message,
+                    mediaType,
+                    mediaUrl: mediaType !== "text" ? mediaUrl : undefined
+                })
+            })
+            await fetchMessageTemplates()
+            setShowSaveMessageTemplateDialog(false)
+            setNewMessageTemplateName("")
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const deleteMessageTemplate = async (id: string) => {
+        if (!confirm("Delete this message template?")) return
+        try {
+            await fetch("/api/broadcast-templates", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "delete", id })
+            })
+            await fetchMessageTemplates()
+            if (selectedMessageTemplateId === id) setSelectedMessageTemplateId("")
+        } catch (e) {
+            console.error(e)
         }
     }
 
@@ -488,6 +561,37 @@ export default function BroadcastPage() {
                             </div>
                         )}
 
+                        {/* Message Template Selector */}
+                        <div className="space-y-2">
+                            <div className="flex gap-2 items-end">
+                                <div className="flex-1">
+                                    <Label>Load Message Template</Label>
+                                    <Select value={selectedMessageTemplateId} onValueChange={loadMessageTemplate}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a saved message template..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {messageTemplates.map(t => (
+                                                <SelectItem key={t.id} value={t.id}>
+                                                    <FileText className="inline h-3 w-3 mr-2" />
+                                                    {t.name} ({t.mediaType})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {selectedMessageTemplateId && (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => deleteMessageTemplate(selectedMessageTemplateId)}
+                                    >
+                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
                         {/* Message Type */}
                         <div className="space-y-2">
                             <Label>Content Type</Label>
@@ -558,6 +662,17 @@ export default function BroadcastPage() {
                                 onChange={(e) => setMessage(e.target.value)}
                                 rows={mediaType === "text" ? 4 : 2}
                             />
+                            {message && (
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => setShowSaveMessageTemplateDialog(true)}
+                                    className="mt-2"
+                                >
+                                    <Save className="h-3 w-3 mr-1" />
+                                    Save as Message Template
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -609,6 +724,44 @@ export default function BroadcastPage() {
                             Cancel
                         </Button>
                         <Button onClick={saveAsTemplate} disabled={!newTemplateName}>
+                            <Save className="h-4 w-4 mr-2" />
+                            Save Template
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Save Message Template Dialog */}
+            <Dialog open={showSaveMessageTemplateDialog} onOpenChange={setShowSaveMessageTemplateDialog}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Save Message Template</DialogTitle>
+                        <DialogDescription>
+                            Save this message as a template for quick reuse in future broadcasts.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div>
+                            <Label>Template Name</Label>
+                            <Input
+                                placeholder="e.g. Promo Announcement, Weekly Update"
+                                value={newMessageTemplateName}
+                                onChange={(e) => setNewMessageTemplateName(e.target.value)}
+                            />
+                        </div>
+                        <div className="p-3 bg-muted rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Preview:</p>
+                            <p className="text-sm">{message.slice(0, 100)}{message.length > 100 ? '...' : ''}</p>
+                            {mediaType !== 'text' && (
+                                <p className="text-xs text-muted-foreground mt-1">📎 Includes {mediaType}</p>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowSaveMessageTemplateDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={saveAsMessageTemplate} disabled={!newMessageTemplateName}>
                             <Save className="h-4 w-4 mr-2" />
                             Save Template
                         </Button>
