@@ -44,3 +44,32 @@ next-env.d.ts
 
 # Keep node_modules and .next excluded (large files)
 # Everything else will be uploaded for backup
+
+# Data and Media
+/gowa-server/storages/
+/gowa-server/statics/
+/gowa-server/*.exe
+/public/uploads/
+*.log
+*.bak
+*.old-version
+*.db
+*.db-shm
+*.db-wal
+
+# Temporary dumps
+response_dump.json
+response_dump.txt
+group-bios.json
+group-bios.txt
+group-links.txt
+join-results.json
+gowa_groups_response.json
+check-gowa-group.js
+check-gowa.js
+extract-group-bios.js
+join-groups.js
+test-*.js
+test-*.json
+trigger-webhook.js
+

@@ -142,7 +142,7 @@ export default function AutomationPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Automation</h2>
                     <p className="text-muted-foreground">Configure auto-reply rules for incoming messages.</p>
@@ -255,9 +255,9 @@ export default function AutomationPage() {
                 ) : (
                     rules.map((rule) => (
                         <Card key={rule.id}>
-                            <CardContent className="flex items-center justify-between p-6">
-                                <div className="flex items-center space-x-4">
-                                    <div className={`p-2 rounded-full ${rule.enabled
+                            <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-6">
+                                <div className="flex items-center gap-3 sm:space-x-4 min-w-0">
+                                    <div className={`p-2 rounded-full shrink-0 ${rule.enabled
                                         ? 'bg-green-100 dark:bg-green-900'
                                         : 'bg-gray-100 dark:bg-gray-800'
                                         }`}>
@@ -266,7 +266,7 @@ export default function AutomationPage() {
                                             : 'text-gray-400'
                                             }`} />
                                     </div>
-                                    <div>
+                                    <div className="min-w-0">
                                         <p className="text-lg font-medium leading-none">{rule.name}</p>
                                         <p className="text-sm text-muted-foreground mt-1">
                                             Keywords: {rule.keywords.join(", ")}
@@ -274,12 +274,12 @@ export default function AutomationPage() {
                                                 ({rule.matchType})
                                             </span>
                                         </p>
-                                        <p className="text-xs text-muted-foreground mt-1 truncate max-w-md">
+                                        <p className="text-xs text-muted-foreground mt-1 truncate max-w-full sm:max-w-md">
                                             Reply: {rule.reply}
                                         </p>
                                     </div>
                                 </div>
-                                <div className="flex items-center space-x-4">
+                                <div className="flex items-center gap-2 sm:space-x-4 ml-auto">
                                     <Badge variant={rule.enabled ? "default" : "outline"}>
                                         {rule.enabled ? "Active" : "Paused"}
                                     </Badge>

@@ -166,7 +166,7 @@ export default function GroupsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">WhatsApp Groups</h2>
                     <p className="text-muted-foreground">
@@ -193,7 +193,7 @@ export default function GroupsPage() {
             {/* Selection Mode Toolbar */}
             {selectMode && (
                 <Card className="bg-primary/5 border-primary/20">
-                    <CardContent className="p-3 flex items-center justify-between">
+                    <CardContent className="p-3 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex gap-2">
                             <Button size="sm" variant="outline" onClick={selectAllFiltered}>
                                 Select All ({filteredGroups.length})

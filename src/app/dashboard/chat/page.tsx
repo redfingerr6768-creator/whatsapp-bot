@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { RefreshCw, Send, User, Users, Search, MessageSquare } from "lucide-react"
+import { RefreshCw, Send, User, Users, Search, MessageSquare, ArrowLeft } from "lucide-react"
 
 // Helper to safely extract ID string from WAHA response
 const getIdString = (id: any): string => {
@@ -86,6 +86,11 @@ export default function ChatPage() {
         }
     }
 
+    const goBackToList = () => {
+        setSelectedChat(null)
+        setMessages([])
+    }
+
     const sendMessage = async () => {
         if (!newMessage.trim() || !selectedChat) return
 
@@ -133,8 +138,8 @@ export default function ChatPage() {
 
     return (
         <div className="flex h-[calc(100vh-120px)] gap-4">
-            {/* Chat List */}
-            <Card className="w-80 flex flex-col">
+            {/* Chat List - hidden on mobile when a chat is selected */}
+            <Card className={`w-full md:w-80 flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
                 <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-lg">Chats</CardTitle>
@@ -173,7 +178,7 @@ export default function ChatPage() {
                                         }`}
                                     onClick={() => selectChat(chat)}
                                 >
-                                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
                                         {chat.isGroup ? (
                                             <Users className="h-5 w-5 text-muted-foreground" />
                                         ) : (
@@ -200,24 +205,33 @@ export default function ChatPage() {
                 </CardContent>
             </Card>
 
-            {/* Chat Window */}
-            <Card className="flex-1 flex flex-col">
+            {/* Chat Window - full width on mobile when a chat is selected */}
+            <Card className={`flex-1 flex flex-col ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
                 {selectedChat ? (
                     <>
                         <CardHeader className="border-b py-3">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                                {/* Back button - mobile only */}
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="md:hidden -ml-1"
+                                    onClick={goBackToList}
+                                >
+                                    <ArrowLeft className="h-5 w-5" />
+                                </Button>
+                                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
                                     {selectedChat.isGroup ? (
                                         <Users className="h-5 w-5 text-muted-foreground" />
                                     ) : (
                                         <User className="h-5 w-5 text-muted-foreground" />
                                     )}
                                 </div>
-                                <div>
-                                    <CardTitle className="text-base">
+                                <div className="min-w-0">
+                                    <CardTitle className="text-base truncate">
                                         {selectedChat.name || getIdString(selectedChat.id).split('@')[0]}
                                     </CardTitle>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground truncate">
                                         {getIdString(selectedChat.id)}
                                     </p>
                                 </div>
@@ -240,9 +254,9 @@ export default function ChatPage() {
                                         className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'}`}
                                     >
                                         <div
-                                            className={`max-w-[70%] px-3 py-2 rounded-lg ${msg.fromMe
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'bg-muted'
+                                            className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-lg ${msg.fromMe
+                                                ? 'bg-primary text-primary-foreground'
+                                                : 'bg-muted'
                                                 }`}
                                         >
                                             <p className="text-sm whitespace-pre-wrap break-words">

@@ -305,7 +305,7 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="device" className="space-y-4">
-                <TabsList>
+                <TabsList className="w-full flex overflow-x-auto">
                     <TabsTrigger value="device">Device & Connection</TabsTrigger>
                     <TabsTrigger value="ai">AI Settings</TabsTrigger>
                     <TabsTrigger value="admin">Admin Control</TabsTrigger>

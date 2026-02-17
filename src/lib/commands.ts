@@ -6,11 +6,12 @@
 import { GowaClient, getGowaClient } from "./gowa";
 import { isAdmin } from "./adminConfig";
 import { getGroupTemplates } from "./groupTemplates";
-import { getBroadcastTemplates, addBroadcastTemplate, deleteBroadcastTemplate, getBroadcastTemplateByName } from "./broadcastTemplates";
+import { getBroadcastTemplates, addBroadcastTemplate, deleteBroadcastTemplate, getBroadcastTemplateByName, updateBroadcastTemplate } from "./broadcastTemplates";
 // Pre-import for speed (avoid dynamic import delay)
 import { createSticker, cleanupOldStickers } from "./sticker";
 import { createVideoSticker, cleanupOldVideoStickers } from "./vsticker";
 import { getRandomDelay, setDelay, getBroadcastConfig } from "./broadcastConfig";
+import { startAutoBroadcast, stopAutoBroadcast, getAutoBroadcastStatus } from "./autoBroadcast";
 import { convertImageForBroadcast, cleanupOldBroadcastMedia } from "./broadcastMedia";
 import { stickerToImage, videoToMp3 } from "./mediaTools";
 
@@ -60,6 +61,10 @@ const COMMANDS = {
     ADMIN_SETDELAY: ["/setdelay", "/delay"],
     ADMIN_SAVEBC: ["/svbc", "/simpanbc"],
     ADMIN_LOADBC: ["/listbc", "/daftarbc"],
+    ADMIN_EDITBC: ["/editbc", "/ebc"],
+    ADMIN_AUTOBC: ["/autobc", "/abc"],
+    ADMIN_STOP_AUTOBC: ["/stopautobc", "/sabc"],
+    ADMIN_STATUS_AUTOBC: ["/statusautobc", "/stabc"],
     // AI Query (available to everyone)
     AI_QUERY: ["/ai"],
     // Useful tools
@@ -136,6 +141,10 @@ export async function handleCommand(payload: MessagePayload): Promise<CommandRes
 📢 */bc* [nama] » Kirim Broadcast
 📝 */svbc* » Simpan Template BC
 📋 */listbc* » List Template BC
+✏️ */editbc* » Edit Template BC
+🤖 */autobc* [tpl] [min] [max] » Auto BC
+🛑 */stopautobc* » Stop Auto BC
+📊 */statusautobc* » Status Auto BC
 💾 */templates* » List Group Template
 👥 */groups* » List Semua Grup
 🛑 */cancel* » Stop Broadcast
@@ -524,15 +533,23 @@ ${groups.length > 15 ? `│  _... dan ${groups.length - 15} lainnya_` : ""}
             return { handled: true, error: "template exists" };
         }
 
+        // Check for ghost mention flag (4th argument or keyword in message)
+        // Format: /svbc nama, group, pesan, ghost
+        const lastPart = parts.length >= 4 ? parts[parts.length - 1].toLowerCase() : "";
+        const ghostMention = ["ghost", "ghostmention", "mention", "everyone", "tag"].includes(lastPart);
+        // If last part is a ghost flag, remove it from the message
+        const finalMessage = ghostMention && parts.length >= 4 ? parts.slice(2, -1).join(", ") : message;
+
         // Save template with group template reference
-        const newTemplate = addBroadcastTemplate(templateName, groupTemplate.name, message, mediaType, mediaUrl);
+        const newTemplate = addBroadcastTemplate(templateName, groupTemplate.name, finalMessage, mediaType, mediaUrl, ghostMention);
 
         const mediaInfo = mediaType !== "text" ? `\n│  📎 *Media:* ${mediaType}` : "";
+        const ghostInfo = ghostMention ? `\n│  👻 *Ghost Mention:* ON` : "";
         await client.sendText(chatId, `╭───  ✅ *TEMPLATE TERSIMPAN*  ───╮
 │
 │  📝 *Nama:* ${newTemplate.name}
 │  👥 *Target:* ${groupTemplate.name} (${groupTemplate.groupIds.length} grup)
-│  💬 *Pesan:* _${message.substring(0, 40)}${message.length > 40 ? "..." : ""}_${mediaInfo}
+│  💬 *Pesan:* _${finalMessage.substring(0, 40)}${finalMessage.length > 40 ? "..." : ""}_${mediaInfo}${ghostInfo}
 │
 │  🚀 *Cara Pakai:*
 │  */bc ${templateName}*
@@ -595,8 +612,328 @@ ${templateList}
 │  📝 *Tambah Template:*
 │  /svbc <nama>, <group>, <pesan>
 │
+│  ✏️ *Edit Template:*
+│  /editbc <nama>, <field>, <value>
+│
 ╰──────────────────────────────╯`);
         return { handled: true, response: "templates listed" };
+    }
+
+    // Admin: Edit broadcast template - /editbc <nama>, <field>, <value>
+    // Fields: message, group, media
+    if (COMMANDS.ADMIN_EDITBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        if (!args.trim()) {
+            const bcTemplates = getBroadcastTemplates();
+            const templateList = bcTemplates.length > 0
+                ? bcTemplates.map(t => `│  • *${t.name}* → ${t.groupTemplateName}`).join("\n")
+                : "│  _Belum ada template_";
+
+            await client.sendText(chatId, `╭───  ✏️ *EDIT BROADCAST*  ───╮
+│
+│  📌 *Format:*
+│  /editbc <nama>, <field>, <value>
+│
+│  📋 *Field yang bisa diedit:*
+│  • *message* — ubah pesan
+│  • *group* — ubah group template
+│  • *name* — ubah nama template
+│
+│  📋 *Contoh:*
+│  /editbc promo, message, Halo promo baru!
+│  /editbc promo, group, VAPE2
+│  /editbc promo, name, promo_baru
+│
+│  💡 *Edit media:*
+│  _Kirim gambar/video dengan caption:_
+│  /editbc promo, media
+│
+│  📂 *Template Tersedia:*
+${templateList}
+│
+╰────────────────────────────╯`);
+            return { handled: true, error: "no args" };
+        }
+
+        const parts = args.split(",").map(a => a.trim());
+        const templateName = parts[0];
+        const field = parts.length >= 2 ? parts[1].toLowerCase() : "";
+        const value = parts.length >= 3 ? parts.slice(2).join(", ") : "";
+
+        if (!templateName) {
+            await client.sendText(chatId, "❌ *Nama template diperlukan*\n\n_Contoh: /editbc promo, message, Pesan baru_");
+            return { handled: true, error: "no template name" };
+        }
+
+        // Find template
+        const template = getBroadcastTemplateByName(templateName);
+        if (!template) {
+            await client.sendText(chatId, `❌ *Template "${templateName}" tidak ditemukan*\n\n_Cek daftar: /listbc_`);
+            return { handled: true, error: "template not found" };
+        }
+
+        if (!field) {
+            // Show current template details
+            const mediaInfo = template.mediaType !== "text" ? `\n│  📎 *Media:* ${template.mediaType}\n│  🔗 _${template.mediaUrl?.substring(0, 40)}..._` : "";
+            await client.sendText(chatId, `╭───  📋 *DETAIL TEMPLATE*  ───╮
+│
+│  📝 *Nama:* ${template.name}
+│  👥 *Group:* ${template.groupTemplateName}
+│  💬 *Pesan:*
+│  _${template.message}_${mediaInfo}
+│
+│  ✏️ *Edit:*
+│  /editbc ${template.name}, message, <pesan baru>
+│  /editbc ${template.name}, group, <group baru>
+│  /editbc ${template.name}, name, <nama baru>
+│
+╰───────────────────────────╯`);
+            return { handled: true, response: "template detail" };
+        }
+
+        // Edit based on field
+        switch (field) {
+            case "message":
+            case "msg":
+            case "pesan": {
+                if (!value) {
+                    await client.sendText(chatId, "❌ *Pesan baru diperlukan*\n\n_Contoh: /editbc promo, message, Pesan baru disini_");
+                    return { handled: true, error: "no value" };
+                }
+                const updated = updateBroadcastTemplate(template.id, { message: value });
+                await client.sendText(chatId, `✅ *Pesan Template Diupdate*\n\n📝 *${template.name}*\n💬 _${value.substring(0, 60)}${value.length > 60 ? "..." : ""}_`);
+                return { handled: true, response: "message updated" };
+            }
+
+            case "group":
+            case "grp":
+            case "grup": {
+                if (!value) {
+                    await client.sendText(chatId, "❌ *Nama group template diperlukan*\n\n_Contoh: /editbc promo, group, VAPE2_");
+                    return { handled: true, error: "no value" };
+                }
+                // Validate group template exists
+                const groupTemplates = getGroupTemplates();
+                const grpTemplate = groupTemplates.find(t =>
+                    t.name.toLowerCase() === value.toLowerCase() ||
+                    t.name.toLowerCase().includes(value.toLowerCase())
+                );
+                if (!grpTemplate) {
+                    const available = groupTemplates.map(t => t.name).join(", ") || "tidak ada";
+                    await client.sendText(chatId, `❌ *Group Template Tidak Ditemukan*\n\nTersedia: ${available}`);
+                    return { handled: true, error: "group template not found" };
+                }
+                updateBroadcastTemplate(template.id, { groupTemplateName: grpTemplate.name });
+                await client.sendText(chatId, `✅ *Group Template Diupdate*\n\n📝 *${template.name}*\n👥 Target: _${grpTemplate.name}_ (${grpTemplate.groupIds.length} grup)`);
+                return { handled: true, response: "group updated" };
+            }
+
+            case "name":
+            case "nama": {
+                if (!value) {
+                    await client.sendText(chatId, "❌ *Nama baru diperlukan*\n\n_Contoh: /editbc promo, name, promo_baru_");
+                    return { handled: true, error: "no value" };
+                }
+                // Check if name already taken
+                const existing = getBroadcastTemplateByName(value);
+                if (existing && existing.id !== template.id) {
+                    await client.sendText(chatId, `❌ *Nama "${value}" sudah dipakai*`);
+                    return { handled: true, error: "name taken" };
+                }
+                updateBroadcastTemplate(template.id, { name: value });
+                await client.sendText(chatId, `✅ *Nama Template Diupdate*\n\n_${template.name}_ → *${value}*`);
+                return { handled: true, response: "name updated" };
+            }
+
+            case "media": {
+                // Update media from attached image/video
+                const mediaUrl = payload.mediaUrl || payload.quotedMsg?.mediaUrl;
+                const mimetype = payload.mimetype || payload.quotedMsg?.mimetype || "";
+
+                if (!mediaUrl) {
+                    await client.sendText(chatId, "❌ *Kirim gambar/video bersama command*\n\n_Contoh: kirim gambar dengan caption:_\n/editbc promo, media");
+                    return { handled: true, error: "no media" };
+                }
+
+                let mediaType: "image" | "video" | "file" = "file";
+                if (mimetype.startsWith("image/")) mediaType = "image";
+                else if (mimetype.startsWith("video/")) mediaType = "video";
+
+                updateBroadcastTemplate(template.id, { mediaType, mediaUrl });
+                await client.sendText(chatId, `✅ *Media Template Diupdate*\n\n📝 *${template.name}*\n📎 Media: _${mediaType}_`);
+                return { handled: true, response: "media updated" };
+            }
+
+            case "nomedia":
+            case "hapusmedia": {
+                updateBroadcastTemplate(template.id, { mediaType: "text", mediaUrl: undefined });
+                await client.sendText(chatId, `✅ *Media Dihapus*\n\n📝 *${template.name}* sekarang text only`);
+                return { handled: true, response: "media removed" };
+            }
+
+            case "ghost":
+            case "ghostmention":
+            case "mention":
+            case "tag": {
+                const newGhostState = !(template.ghostMention ?? false);
+                updateBroadcastTemplate(template.id, { ghostMention: newGhostState });
+                await client.sendText(chatId, `✅ *Ghost Mention ${newGhostState ? "ON 👻" : "OFF"}*\n\n📝 *${template.name}*\n_${newGhostState ? "Semua member akan di-tag saat broadcast" : "Broadcast tanpa tag"}_`);
+                return { handled: true, response: `ghost mention ${newGhostState ? "on" : "off"}` };
+            }
+
+            default:
+                await client.sendText(chatId, `❌ *Field "${field}" tidak dikenal*\n\n_Field: message, group, name, media, nomedia, ghost_`);
+                return { handled: true, error: "unknown field" };
+        }
+    }
+
+    // Admin: Auto Broadcast - /autobc <template_name> [min_interval] [max_interval]
+    if (COMMANDS.ADMIN_AUTOBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        if (!args.trim()) {
+            // Show help
+            const bcTemplates = getBroadcastTemplates();
+            const templateList = bcTemplates.length > 0
+                ? bcTemplates.map(t => `│  • *${t.name}* → ${t.groupTemplateName}`).join("\n")
+                : "│  _Belum ada template_";
+
+            await client.sendText(chatId, `╭───  🤖 *AUTO BROADCAST*  ───╮
+│
+│  📌 *Format:*
+│  /autobc <template> [min] [max]
+│
+│  📋 *Contoh:*
+│  /autobc promo 60 80
+│  _(broadcast setiap 60-80 menit)_
+│
+│  /autobc promo
+│  _(default: 60-80 menit)_
+│
+│  📂 *Template Tersedia:*
+${templateList}
+│
+│  💡 *Tips:*
+│  _Bisa pakai beberapa template_
+│  _dipisah koma untuk rotasi:_
+│  /autobc promo1,promo2 60 80
+│
+╰────────────────────────────╯`);
+            return { handled: true, error: "no args" };
+        }
+
+        // Parse args: <template_names> [min] [max]
+        const parts = args.trim().split(/\s+/);
+        const templateNamesRaw = parts[0];
+        const minInterval = parts.length >= 2 ? parseFloat(parts[1]) : 60;
+        const maxInterval = parts.length >= 3 ? parseFloat(parts[2]) : (parts.length >= 2 ? parseFloat(parts[1]) + 20 : 80);
+
+        // Support comma-separated template names for rotation
+        const templateNames = templateNamesRaw.split(",").map(n => n.trim()).filter(Boolean);
+
+        // Validate templates exist
+        const invalidTemplates: string[] = [];
+        for (const name of templateNames) {
+            const tmpl = getBroadcastTemplateByName(name);
+            if (!tmpl) invalidTemplates.push(name);
+        }
+
+        if (invalidTemplates.length > 0) {
+            await client.sendText(chatId, `❌ *Template Tidak Ditemukan:*\n${invalidTemplates.join(", ")}\n\n_Cek daftar template: /listbc_`);
+            return { handled: true, error: "template not found" };
+        }
+
+        // Validate intervals
+        if (isNaN(minInterval) || isNaN(maxInterval) || minInterval < 1 || maxInterval < 1) {
+            await client.sendText(chatId, "❌ *Interval tidak valid*\n\n_Minimum 1 menit_");
+            return { handled: true, error: "invalid interval" };
+        }
+
+        let finalMin = Math.min(minInterval, maxInterval);
+        let finalMax = Math.max(minInterval, maxInterval);
+
+        // Start auto broadcast
+        const config = startAutoBroadcast(templateNames, finalMin, finalMax);
+
+        const templateListStr = templateNames.map(n => `│  • *${n}*`).join("\n");
+        await client.sendText(chatId, `╭━━━  ✅ *AUTO BC AKTIF*  ━━━╮
+│
+│  📋 *Template:*
+${templateListStr}
+│
+│  ⏱️ *Interval:*
+│  _Random ${finalMin}-${finalMax} menit_
+│
+│  🔄 *Mode:* ${templateNames.length > 1 ? "Rotasi" : "Single"}
+│
+│  📊 *Cek Status:* /statusautobc
+│  🛑 *Stop:* /stopautobc
+│
+╰━━━━━━━━━━━━━━━━━━━━╯`);
+        return { handled: true, response: "auto broadcast started" };
+    }
+
+    // Admin: Stop Auto Broadcast
+    if (COMMANDS.ADMIN_STOP_AUTOBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const status = getAutoBroadcastStatus();
+        if (!status.isRunning && !status.config.enabled) {
+            await client.sendText(chatId, "⚠️ *Auto broadcast tidak aktif*");
+            return { handled: true, error: "not running" };
+        }
+
+        const config = stopAutoBroadcast();
+
+        await client.sendText(chatId, `╭━━━  🛑 *AUTO BC DIHENTIKAN*  ━━━╮
+│
+│  📊 *Total Sesi:* ${config.totalSent}
+│  ⏱️ *Terakhir:*
+│  _${config.lastBroadcastAt ? new Date(config.lastBroadcastAt).toLocaleString("id-ID") : "Belum pernah"}_
+│
+╰━━━━━━━━━━━━━━━━━━━━━━╯`);
+        return { handled: true, response: "auto broadcast stopped" };
+    }
+
+    // Admin: Status Auto Broadcast
+    if (COMMANDS.ADMIN_STATUS_AUTOBC.includes(command)) {
+        if (!senderIsAdmin) return { handled: false };
+
+        const status = getAutoBroadcastStatus();
+        const cfg = status.config;
+
+        const statusIcon = status.isRunning ? "🟢" : "🔴";
+        const statusText = status.isRunning ? "AKTIF" : "NONAKTIF";
+        const executingText = status.isExecuting ? "\n│  ⚡ _Sedang mengirim broadcast..._" : "";
+
+        const templateList = cfg.templateNames.length > 0
+            ? cfg.templateNames.map((n, i) => `│  ${i === cfg.currentIndex ? "▶" : "  "} ${n}`).join("\n")
+            : "│  _Belum ada template_";
+
+        const lastBC = cfg.lastBroadcastAt
+            ? new Date(cfg.lastBroadcastAt).toLocaleString("id-ID")
+            : "Belum pernah";
+
+        const nextBC = status.nextIn || "-";
+
+        await client.sendText(chatId, `╭━━━  📊 *AUTO BC STATUS*  ━━━╮
+│
+│  ${statusIcon} *Status:* ${statusText}${executingText}
+│
+│  📋 *Templates:*
+${templateList}
+│
+│  ⏱️ *Interval:* ${cfg.minIntervalMinutes}-${cfg.maxIntervalMinutes} menit
+│  📡 *Total Sent:* ${cfg.totalSent} sesi
+│  🕐 *Terakhir:* ${lastBC}
+│  ⏳ *Berikutnya:* ${nextBC}
+│
+│  🤖 */autobc* - mulai
+│  🛑 */stopautobc* - stop
+│
+╰━━━━━━━━━━━━━━━━━━━━━╯`);
+        return { handled: true, response: "auto broadcast status" };
     }
 
     return { handled: false };
@@ -800,6 +1137,10 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
         let failCount = 0;
         let cancelledAt = 0;
 
+        // Ghost mention: check if template has ghostMention enabled
+        const useGhostMention = savedTemplate ? savedTemplate.ghostMention : false;
+        const mentions = useGhostMention ? ["@everyone"] : undefined;
+
         for (let i = 0; i < uniqueGroupIds.length; i++) {
             // Check for cancellation
             if (cancelBroadcast) {
@@ -818,10 +1159,14 @@ async function handleAdminBroadcast(client: GowaClient, adminChatId: string, arg
                         await client.sendVideo(groupId, finalMediaUrl!, message);
                     } else {
                         await client.sendFile(groupId, finalMediaUrl!);
-                        if (message) await client.sendText(groupId, message);
+                        if (message) await client.sendText(groupId, message, mentions);
+                    }
+                    // For image/video with ghost mention, send extra mention
+                    if (mentions && (mimetype.startsWith("image/") || mimetype.startsWith("video/"))) {
+                        await client.sendText(groupId, "​", mentions);
                     }
                 } else {
-                    await client.sendText(groupId, message);
+                    await client.sendText(groupId, message, mentions);
                 }
                 successCount++;
             } catch (e: any) {
@@ -906,8 +1251,13 @@ async function handleStickerCommand(client: GowaClient, chatId: string, payload:
             return { handled: true, error: "no media" };
         }
 
+        // SMART FEATURE: If video is detected, route to Video Sticker handler
+        if (mimetype.startsWith("video/")) {
+            return handleVideoStickerCommand(client, chatId, payload);
+        }
+
         if (!mimetype.startsWith("image/")) {
-            await client.sendText(chatId, "❌ *Format Salah*\n\n_File harus berupa gambar (JPG/PNG)_");
+            await client.sendText(chatId, "❌ *Format Salah*\n\n_File harus berupa gambar (JPG/PNG) atau Video (MP4)_");
             return { handled: true, error: "not an image" };
         }
 

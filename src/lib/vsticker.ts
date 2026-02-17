@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
 
+import ffmpegPath from "ffmpeg-static";
+
 const execFileAsync = promisify(execFile);
 
 // Directory for converted video stickers
@@ -28,10 +30,18 @@ export interface VideoStickerResult {
  */
 export async function createVideoSticker(videoUrl: string): Promise<VideoStickerResult> {
     const stickerId = randomUUID().substring(0, 8);
+
+    // Cleanup old files before creating new one
+    cleanupOldVideoStickers();
+
     const tempVideo = path.join(VSTICKERS_DIR, `temp_${stickerId}.mp4`);
     const outputWebp = path.join(VSTICKERS_DIR, `vsticker_${stickerId}.webp`);
 
     try {
+        if (!ffmpegPath) {
+            throw new Error("FFmpeg binary not found!");
+        }
+
         // 1. Download video
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 30000);
@@ -62,7 +72,7 @@ export async function createVideoSticker(videoUrl: string): Promise<VideoSticker
             outputWebp
         ];
 
-        await execFileAsync("ffmpeg", ffmpegArgs, { timeout: 60000 });
+        await execFileAsync(ffmpegPath, ffmpegArgs, { timeout: 60000 });
 
         // 3. Clean up temp video
         try { fs.unlinkSync(tempVideo); } catch { }

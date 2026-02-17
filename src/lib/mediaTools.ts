@@ -5,7 +5,10 @@ import { randomUUID } from "crypto";
 import { exec } from "child_process";
 import { promisify } from "util";
 
+import ffmpegPath from "ffmpeg-static";
+
 const execAsync = promisify(exec);
+const execFileAsync = promisify(require("child_process").execFile);
 
 // Directories
 const MEDIA_DIR = path.join(process.cwd(), "public", "uploads", "media");
@@ -65,6 +68,8 @@ export async function videoToMp3(url: string): Promise<ConvertedMedia> {
     const outputPath = path.join(MEDIA_DIR, outputFilename);
 
     try {
+        if (!ffmpegPath) throw new Error("FFmpeg binary not found!");
+
         // Fetch video
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Failed to fetch video: ${response.status}`);
@@ -75,7 +80,14 @@ export async function videoToMp3(url: string): Promise<ConvertedMedia> {
         // -vn: disable video
         // -acodec libmp3lame: audio codec
         // -q:a 2: variable bit rate (high quality)
-        await execAsync(`ffmpeg -i "${inputPath}" -vn -acodec libmp3lame -q:a 2 "${outputPath}"`);
+        await execFileAsync(ffmpegPath, [
+            "-i", inputPath,
+            "-vn",
+            "-acodec", "libmp3lame",
+            "-q:a", "2",
+            "-y",
+            outputPath
+        ]);
 
         // Clean input file
         try { fs.unlinkSync(inputPath); } catch { }

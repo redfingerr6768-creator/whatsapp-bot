@@ -13,6 +13,7 @@ export interface BroadcastTemplate {
     message: string;
     mediaType: "text" | "image" | "video" | "file";
     mediaUrl?: string;
+    ghostMention: boolean; // Whether to mention @everyone (ghost mention)
     createdAt: number;
     updatedAt: number;
 }
@@ -77,7 +78,8 @@ export function addBroadcastTemplate(
     groupTemplateName: string,
     message: string,
     mediaType: BroadcastTemplate['mediaType'] = 'text',
-    mediaUrl?: string
+    mediaUrl?: string,
+    ghostMention: boolean = false
 ): BroadcastTemplate {
     ensureInitialized();
     const now = Date.now();
@@ -88,6 +90,7 @@ export function addBroadcastTemplate(
         message,
         mediaType,
         mediaUrl,
+        ghostMention,
         createdAt: now,
         updatedAt: now
     };
@@ -98,7 +101,7 @@ export function addBroadcastTemplate(
 
 export function updateBroadcastTemplate(
     id: string,
-    updates: Partial<Pick<BroadcastTemplate, 'name' | 'groupTemplateName' | 'message' | 'mediaType' | 'mediaUrl'>>
+    updates: Partial<Pick<BroadcastTemplate, 'name' | 'groupTemplateName' | 'message' | 'mediaType' | 'mediaUrl' | 'ghostMention'>>
 ): BroadcastTemplate | null {
     ensureInitialized();
     const index = templates!.findIndex(t => t.id === id);

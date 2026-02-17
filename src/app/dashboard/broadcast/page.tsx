@@ -14,7 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Plus, Send, Users, Clock, CheckCircle, XCircle, RefreshCw, Save, FolderOpen, Trash2, Upload, FileText } from "lucide-react"
+import { Plus, Send, Users, Clock, CheckCircle, XCircle, RefreshCw, Save, FolderOpen, Trash2, Upload, FileText, Ghost, Pencil } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -49,6 +49,7 @@ interface MessageTemplate {
     message: string;
     mediaType: "text" | "image" | "video" | "file";
     mediaUrl?: string;
+    ghostMention?: boolean;
     createdAt: number;
 }
 
@@ -94,6 +95,16 @@ export default function BroadcastPage() {
     const [sending, setSending] = useState(false)
     const [results, setResults] = useState<BroadcastResult[]>([])
     const [showResults, setShowResults] = useState(false)
+    const [ghostMention, setGhostMention] = useState(false)
+
+    // Edit template state
+    const [showEditDialog, setShowEditDialog] = useState(false)
+    const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null)
+    const [editName, setEditName] = useState("")
+    const [editMessage, setEditMessage] = useState("")
+    const [editMediaType, setEditMediaType] = useState<"text" | "image" | "video" | "file">("text")
+    const [editMediaUrl, setEditMediaUrl] = useState("")
+    const [editGhostMention, setEditGhostMention] = useState(false)
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -170,6 +181,7 @@ export default function BroadcastPage() {
             setMessage(template.message)
             setMediaType(template.mediaType)
             setMediaUrl(template.mediaUrl || "")
+            setGhostMention(template.ghostMention ?? false)
             setSelectedMessageTemplateId(templateId)
         }
     }
@@ -185,7 +197,8 @@ export default function BroadcastPage() {
                     name: newMessageTemplateName,
                     message,
                     mediaType,
-                    mediaUrl: mediaType !== "text" ? mediaUrl : undefined
+                    mediaUrl: mediaType !== "text" ? mediaUrl : undefined,
+                    ghostMention
                 })
             })
             await fetchMessageTemplates()
@@ -206,6 +219,40 @@ export default function BroadcastPage() {
             })
             await fetchMessageTemplates()
             if (selectedMessageTemplateId === id) setSelectedMessageTemplateId("")
+        } catch (e) {
+            console.error(e)
+        }
+    }
+
+    const openEditDialog = (template: MessageTemplate) => {
+        setEditingTemplate(template)
+        setEditName(template.name)
+        setEditMessage(template.message)
+        setEditMediaType(template.mediaType)
+        setEditMediaUrl(template.mediaUrl || "")
+        setEditGhostMention(template.ghostMention ?? false)
+        setShowEditDialog(true)
+    }
+
+    const updateMessageTemplate = async () => {
+        if (!editingTemplate || !editName || !editMessage) return
+        try {
+            await fetch("/api/broadcast-templates", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "update",
+                    id: editingTemplate.id,
+                    name: editName,
+                    message: editMessage,
+                    mediaType: editMediaType,
+                    mediaUrl: editMediaType !== "text" ? editMediaUrl : undefined,
+                    ghostMention: editGhostMention
+                })
+            })
+            await fetchMessageTemplates()
+            setShowEditDialog(false)
+            setEditingTemplate(null)
         } catch (e) {
             console.error(e)
         }
@@ -290,6 +337,9 @@ export default function BroadcastPage() {
                 if (mediaType === "text") {
                     requestBody.action = "sendText"
                     requestBody.text = message
+                    if (ghostMention) {
+                        requestBody.mentions = ["@everyone"]
+                    }
                 } else if (mediaType === "image") {
                     requestBody.action = "sendImage"
                     requestBody.imageUrl = mediaUrl
@@ -309,6 +359,22 @@ export default function BroadcastPage() {
                     body: JSON.stringify(requestBody)
                 })
                 const data = await res.json()
+
+                // For media broadcasts with ghost mention, send an extra invisible mention message
+                if (ghostMention && mediaType !== "text" && !data.error) {
+                    try {
+                        await fetch("/api/messages", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                chatId,
+                                action: "sendText",
+                                text: "\u200B", // Zero-width space
+                                mentions: ["@everyone"]
+                            })
+                        })
+                    } catch { }
+                }
 
                 newResults.push({
                     chatId,
@@ -337,7 +403,7 @@ export default function BroadcastPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Broadcast</h2>
                     <p className="text-muted-foreground">Send messages to multiple groups or contacts at once.</p>
@@ -391,6 +457,75 @@ export default function BroadcastPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Saved Broadcast Templates */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <FileText className="h-5 w-5" />
+                            Broadcast Templates
+                        </div>
+                        <Badge variant="secondary">{messageTemplates.length} saved</Badge>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {messageTemplates.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                            <p>No broadcast templates yet.</p>
+                            <p className="text-xs">Create one via the &quot;New Broadcast&quot; dialog or use <code>/svbc</code> command.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {messageTemplates.map(t => (
+                                <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium">{t.name}</span>
+                                            <Badge variant="outline" className="text-xs">{t.mediaType}</Badge>
+                                            {t.ghostMention && (
+                                                <Badge variant="secondary" className="text-xs gap-1">
+                                                    <Ghost className="h-3 w-3" /> Ghost
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-muted-foreground truncate mt-1">
+                                            {t.message.substring(0, 80)}{t.message.length > 80 ? "..." : ""}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1 ml-2">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => openEditDialog(t)}
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => {
+                                                loadMessageTemplate(t.id)
+                                                setShowNewDialog(true)
+                                            }}
+                                        >
+                                            <Send className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => deleteMessageTemplate(t.id)}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-red-500" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Results Card */}
             {showResults && results.length > 0 && (
@@ -674,6 +809,26 @@ export default function BroadcastPage() {
                                 </Button>
                             )}
                         </div>
+
+                        {/* Ghost Mention Toggle */}
+                        {targetType === "groups" && (
+                            <div className="flex items-center space-x-3 p-3 border rounded-lg bg-muted/30">
+                                <input
+                                    type="checkbox"
+                                    id="ghostMention"
+                                    checked={ghostMention}
+                                    onChange={(e) => setGhostMention(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                />
+                                <label htmlFor="ghostMention" className="flex items-center gap-2 text-sm cursor-pointer">
+                                    <Ghost className="h-4 w-4 text-purple-500" />
+                                    <div>
+                                        <div className="font-medium">Ghost Mention (@everyone)</div>
+                                        <div className="text-xs text-muted-foreground">Tag semua member tanpa menampilkan @ di pesan</div>
+                                    </div>
+                                </label>
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter>
@@ -764,6 +919,84 @@ export default function BroadcastPage() {
                         <Button onClick={saveAsMessageTemplate} disabled={!newMessageTemplateName}>
                             <Save className="h-4 w-4 mr-2" />
                             Save Template
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Broadcast Template Dialog */}
+            <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Edit Broadcast Template</DialogTitle>
+                        <DialogDescription>
+                            Update the template settings.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div>
+                            <Label>Template Name</Label>
+                            <Input
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <Label>Message</Label>
+                            <Textarea
+                                value={editMessage}
+                                onChange={(e) => setEditMessage(e.target.value)}
+                                rows={5}
+                            />
+                        </div>
+                        <div>
+                            <Label>Content Type</Label>
+                            <Select value={editMediaType} onValueChange={(v: any) => setEditMediaType(v)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="text">📝 Text Only</SelectItem>
+                                    <SelectItem value="image">🖼️ Image</SelectItem>
+                                    <SelectItem value="video">🎥 Video</SelectItem>
+                                    <SelectItem value="file">📎 File/Document</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {editMediaType !== "text" && (
+                            <div>
+                                <Label>Media URL</Label>
+                                <Input
+                                    value={editMediaUrl}
+                                    onChange={(e) => setEditMediaUrl(e.target.value)}
+                                    placeholder="https://..."
+                                />
+                            </div>
+                        )}
+                        <div className="flex items-center space-x-3 p-3 border rounded-lg bg-muted/30">
+                            <input
+                                type="checkbox"
+                                id="editGhostMention"
+                                checked={editGhostMention}
+                                onChange={(e) => setEditGhostMention(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300"
+                            />
+                            <label htmlFor="editGhostMention" className="flex items-center gap-2 text-sm cursor-pointer">
+                                <Ghost className="h-4 w-4 text-purple-500" />
+                                <div>
+                                    <div className="font-medium">Ghost Mention (@everyone)</div>
+                                    <div className="text-xs text-muted-foreground">Tag semua member saat broadcast</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={updateMessageTemplate} disabled={!editName || !editMessage}>
+                            <Save className="h-4 w-4 mr-2" />
+                            Save Changes
                         </Button>
                     </DialogFooter>
                 </DialogContent>

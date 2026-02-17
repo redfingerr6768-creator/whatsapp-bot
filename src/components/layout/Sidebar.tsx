@@ -13,7 +13,8 @@ import {
   Settings,
   MessageSquare,
   BarChart3,
-  LogOut
+  LogOut,
+  X
 } from "lucide-react"
 
 const sidebarItems = [
@@ -27,18 +28,32 @@ const sidebarItems = [
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname()
 
-  return (
+  const sidebarContent = (
     <div className="flex h-full w-64 flex-col border-r bg-card text-card-foreground">
-      <div className="flex h-16 items-center border-b px-6">
+      <div className="flex h-16 items-center justify-between border-b px-6">
         <span className="text-xl font-bold tracking-tight text-primary">WA Broadcast</span>
+        {/* Close button visible only on mobile */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="md:hidden -mr-2"
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+        </Button>
       </div>
       <div className="flex-1 overflow-auto py-4">
         <nav className="grid gap-1 px-2">
           {sidebarItems.map((item, index) => (
-            <Link key={index} href={item.href}>
+            <Link key={index} href={item.href} onClick={onClose}>
               <span
                 className={cn(
                   "group flex items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground",
@@ -59,5 +74,29 @@ export function Sidebar() {
         </Button>
       </div>
     </div>
+  )
+
+  return (
+    <>
+      {/* Desktop sidebar - always visible */}
+      <div className="hidden md:flex">
+        {sidebarContent}
+      </div>
+
+      {/* Mobile sidebar - overlay drawer */}
+      {isOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={onClose}
+          />
+          {/* Drawer */}
+          <div className="relative h-full w-64 animate-in slide-in-from-left duration-200">
+            {sidebarContent}
+          </div>
+        </div>
+      )}
+    </>
   )
 }

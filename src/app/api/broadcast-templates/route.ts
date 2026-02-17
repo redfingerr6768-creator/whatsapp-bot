@@ -19,21 +19,23 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { action, id, name, message, mediaType, mediaUrl } = body;
+        const { action, id, name, groupTemplateName, message, mediaType, mediaUrl, ghostMention } = body;
 
         switch (action) {
             case "create":
-                if (!name || !message) {
-                    return NextResponse.json({ error: "Name and message are required" }, { status: 400 });
+                if (!name || !groupTemplateName || !message) {
+                    return NextResponse.json({ error: "Name, groupTemplateName, and message are required" }, { status: 400 });
                 }
-                const newTemplate = addBroadcastTemplate(name, message, mediaType || 'text', mediaUrl);
+                const newTemplate = addBroadcastTemplate(name, groupTemplateName, message, mediaType || 'text', mediaUrl, ghostMention ?? false);
                 return NextResponse.json(newTemplate);
 
             case "update":
                 if (!id) {
                     return NextResponse.json({ error: "ID is required" }, { status: 400 });
                 }
-                const updated = updateBroadcastTemplate(id, { name, message, mediaType, mediaUrl });
+                const updates: any = { name, groupTemplateName, message, mediaType, mediaUrl };
+                if (ghostMention !== undefined) updates.ghostMention = ghostMention;
+                const updated = updateBroadcastTemplate(id, updates);
                 if (!updated) {
                     return NextResponse.json({ error: "Template not found" }, { status: 404 });
                 }

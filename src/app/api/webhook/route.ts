@@ -25,6 +25,10 @@ function logToFile(message: string) {
 const processedMessages = new Set<string>();
 const MAX_CACHE_SIZE = 1000;
 
+// Auto broadcast restore flag - only restore once on first webhook call
+let autoBroadcastRestored = false;
+let telegramBotStarted = false;
+
 function isMessageProcessed(messageId: string): boolean {
     if (processedMessages.has(messageId)) {
         return true;
@@ -107,6 +111,31 @@ function isOwnMessage(payload: GowaWebhookPayload, deviceId: string): boolean {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
+
+        // Restore auto broadcast on first webhook call (after bot restart)
+        if (!autoBroadcastRestored) {
+            autoBroadcastRestored = true;
+            try {
+                const { restoreAutoBroadcast } = await import("@/lib/autoBroadcast");
+                restoreAutoBroadcast();
+                console.log("[WEBHOOK] Auto broadcast restore check completed");
+            } catch (e) {
+                console.error("[WEBHOOK] Auto broadcast restore failed:", e);
+            }
+        }
+
+        // Start Telegram admin bot on first webhook call
+        if (!telegramBotStarted) {
+            telegramBotStarted = true;
+            try {
+                const { initTelegramBot } = await import("@/lib/telegramBot");
+                initTelegramBot();
+                console.log("[WEBHOOK] Telegram admin bot initialized");
+            } catch (e) {
+                console.error("[WEBHOOK] Telegram bot init failed:", e);
+            }
+        }
+
         // DEBUG: Log full body to inspect structure for quoted media
         console.log(`[WEBHOOK] Full Body:`, JSON.stringify(body, null, 2));
 
@@ -213,6 +242,18 @@ _Reply langsung ke ${senderPhone} untuk membalas_`;
                         console.error(`[WEBHOOK] Failed to notify admin ${adminNum}:`, err.message);
                     });
                 }
+
+                // Also notify via Telegram
+                try {
+                    const { notifyTelegramAdmins } = await import("@/lib/telegramBot");
+                    notifyTelegramAdmins(
+                        `📩 <b>Pesan Masuk</b>\n\n` +
+                        `👤 <b>Dari:</b> ${senderName}\n` +
+                        `📞 <b>Nomor:</b> ${senderPhone}\n` +
+                        `💬 <b>Pesan:</b> ${messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText}`
+                    );
+                } catch { }
+
                 console.log(`[WEBHOOK] Notified ${adminNumbers.length} admins about message from ${senderPhone}`);
             }
         } catch (notifError) {
@@ -220,6 +261,66 @@ _Reply langsung ke ${senderPhone} untuk membalas_`;
             // Don't block message processing if notification fails
         }
 
+
+        // === TAG EVERYONE FEATURE (@all) ===
+        // Allow admins to tag everyone in the group
+        if (messageText && (messageText === "@all" || messageText.startsWith("@all "))) {
+            try {
+                const client = getGowaClient(GOWA_URL, GOWA_BASIC_AUTH);
+
+                // Determine actual Group ID and Sender
+                let groupJid = chatId;
+
+                // Fix for GOWA "payload" format: sender is in payload.from
+                // Priority: message.participant > payload.participant > payload.from > body.from
+                let senderJid = body.message?.participant ||
+                    body.payload?.participant ||
+                    body.payload?.from ||
+                    body.from;
+
+                // Handle "SENDER in GROUP" format if present in senderJid or body.from
+                // Some GOWA versions put "X in Y" in the 'from' field
+                const rawFrom = senderJid || body.from;
+                if (rawFrom && rawFrom.includes(" in ")) {
+                    const parts = rawFrom.split(" in ");
+                    senderJid = parts[0];
+                    // If we haven't determined groupJid yet (or it's same as sender), use the group part
+                    if (!groupJid || groupJid === senderJid) {
+                        groupJid = parts[1];
+                    }
+                }
+
+                // Ensure groupJid is valid
+                if (groupJid && groupJid.endsWith("@g.us")) {
+                    console.log(`[WEBHOOK] Processing @all for group ${groupJid} from ${senderJid}`);
+
+                    // Fetch group metadata to check admin status and get participants
+                    const groupMetadata = await client.getGroupInfo(groupJid);
+
+                    // Normalize JIDs for comparison (remove suffix/prefix if needed, but usually exact match works)
+                    // Check if sender is admin
+                    const sender = groupMetadata.participants.find(p =>
+                        p.jid === senderJid ||
+                        (senderJid && p.jid.includes(senderJid.split('@')[0]))
+                    );
+
+                    if (sender && (sender.isAdmin || sender.isSuperAdmin)) {
+                        const mentions = groupMetadata.participants.map(p => p.jid);
+
+                        // Send message with mentions
+                        // Note: Passing 'mentions' array makes them ghost mentions if not in body
+                        await client.sendText(groupJid, "📢 *Tag Everyone* (Admin)\n\n" + messageText, mentions);
+
+                        console.log(`[WEBHOOK] Successfully tagged ${mentions.length} participants in ${groupJid}`);
+                        return NextResponse.json({ status: "tagged_all", count: mentions.length });
+                    } else {
+                        console.log(`[WEBHOOK] @all ignored - Sender ${senderJid} is not admin`);
+                    }
+                }
+            } catch (err: any) {
+                console.error("[WEBHOOK] Failed to process @all:", err.message);
+            }
+        }
 
         // Check for bot commands first
         const { isCommand, handleCommand } = await import("@/lib/commands");

@@ -21,9 +21,19 @@ export async function POST(req: NextRequest) {
 
         // Generate unique filename
         const timestamp = Date.now();
-        const ext = path.extname(file.name) || ".bin";
+        let ext = path.extname(file.name) || ".bin";
+
+        // Remap unsupported image extensions to GOWA-compatible ones
+        const extRemap: Record<string, string> = {
+            ".jfif": ".jpg",
+            ".jpe": ".jpg",
+            ".pjpeg": ".jpg",
+            ".pjp": ".jpg",
+        };
+        ext = extRemap[ext.toLowerCase()] || ext;
+
         const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
-        const filename = `${timestamp}-${safeName}`;
+        const filename = `${timestamp}-${safeName.replace(/\.[^.]+$/, "")}${ext}`;
 
         // Read file buffer and save
         const bytes = await file.arrayBuffer();

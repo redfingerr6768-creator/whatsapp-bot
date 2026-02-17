@@ -57,6 +57,7 @@ export class GowaClient {
             headers["Content-Type"] = "application/json";
         }
 
+
         let response: Response | undefined;
         let lastError: any;
         const maxRetries = 2;      // Reduced from 3
@@ -246,18 +247,27 @@ export class GowaClient {
 
     // ==================== MESSAGING ====================
     async sendText(phone: string, message: string, mentions?: string[]): Promise<GowaResponse & { messageId?: string }> {
-        // NOTE: GOWA API does not seem to support 'mentions' field in FormData (returns 405).
-        // Mentions must be embedded in the message text (e.g. @628xxx).
-        const formData = this.createFormData({
-            phone,
-            message,
-        });
+        let res: GowaResponse<{ message_id?: string, id?: string }>;
 
-        const res = await this.request(
-            "/send/message",
-            { method: "POST", body: formData },
-            true
-        ) as GowaResponse<{ message_id?: string, id?: string }>;
+        if (mentions && mentions.length > 0) {
+            // GOWA v8.3.0+ supports mentions via JSON body
+            res = await this.request(
+                "/send/message",
+                {
+                    method: "POST",
+                    body: JSON.stringify({ phone, message, mentions }),
+                },
+                false // JSON body, not FormData
+            ) as GowaResponse<{ message_id?: string, id?: string }>;
+        } else {
+            // Default: use FormData for regular messages
+            const formData = this.createFormData({ phone, message });
+            res = await this.request(
+                "/send/message",
+                { method: "POST", body: formData },
+                true
+            ) as GowaResponse<{ message_id?: string, id?: string }>;
+        }
 
         // Extract message ID from response for later editing
         const messageId = res.results?.message_id || res.results?.id;
@@ -291,6 +301,29 @@ export class GowaClient {
         ) as Promise<GowaResponse>;
     }
 
+    // Remap unsupported file extensions in URLs for GOWA compatibility
+    private sanitizeMediaUrl(url: string): string {
+        const remap: Record<string, string> = {
+            ".jfif": ".jpg",
+            ".jpe": ".jpg",
+            ".pjpeg": ".jpg",
+            ".pjp": ".jpg",
+        };
+        for (const [from, to] of Object.entries(remap)) {
+            if (url.toLowerCase().endsWith(from)) {
+                return url.slice(0, -from.length) + to;
+            }
+            // Also handle URLs with query params
+            const qIdx = url.indexOf("?");
+            if (qIdx > 0) {
+                const base = url.substring(0, qIdx);
+                if (base.toLowerCase().endsWith(from)) {
+                    return base.slice(0, -from.length) + to + url.substring(qIdx);
+                }
+            }
+        }
+        return url;
+    }
 
     async sendImage(
         phone: string,
@@ -300,7 +333,7 @@ export class GowaClient {
     ): Promise<GowaResponse> {
         const formData = this.createFormData({
             phone,
-            image_url: imageUrl,
+            image_url: this.sanitizeMediaUrl(imageUrl),
             caption: caption || "",
             compress: "false",
             sticker: asSticker ? "true" : "false",
@@ -422,7 +455,24 @@ export class GowaClient {
         const res = await this.request(`/group?group_id=${encodeURIComponent(groupId)}`, {
             method: "GET",
         });
-        return (res as GowaResponse<GroupInfo>).results!;
+        // GOWA /group endpoint returns the object directly, not wrapped in results
+        const g = (res as any).results || (res as any).data || (res as any);
+
+        // Normalize keys (GOWA returns PascalCase)
+        return {
+            ...g,
+            id: g.JID || g.jid || g.id,
+            jid: g.JID || g.jid,
+            name: g.Name || g.name || g.subject,
+            subject: g.Name || g.subject || g.name,
+            topic: g.Topic || g.topic || "",
+            participants: (g.Participants || g.participants || []).map((p: any) => ({
+                ...p,
+                jid: p.JID || p.jid,
+                isAdmin: p.IsAdmin || p.isAdmin || false,
+                isSuperAdmin: p.IsSuperAdmin || p.isSuperAdmin || false
+            }))
+        };
     }
 
     async createGroup(name: string, participants: string[]): Promise<GowaResponse> {
